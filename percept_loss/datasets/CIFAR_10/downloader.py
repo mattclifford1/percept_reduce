@@ -67,7 +67,7 @@ def save_batches_as_png(ims_dir):
 
     meta_dict = {'filename': file_names, 
                  'label': labels,
-                 'one_hot_label': one_hot_labels}
+                 'numerical_label': one_hot_labels}
     df = pd.DataFrame.from_dict(meta_dict)
     df.to_csv(CIFAR_10_META_CSV, index=False, header=list(meta_dict.keys()))
 
