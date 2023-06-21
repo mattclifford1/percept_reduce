@@ -39,11 +39,18 @@ class CIFAR_10_LOADER:
             self.labels = [self.labels[i] for i in self.indicies_to_use]
             self.numerical_label = [self.numerical_label[i] for i in self.indicies_to_use]
 
-    def __len__(self):
-        return len(self.labels)
+    def get_images_dict(self):
+        '''get dict of all pre loaded and processed images - useful to pass to other dataset
+        so that you only have to read from file and process once'''
+        images = {}
+        for ind in range(len(self.labels)):
+            filename = self.filenames[ind]
+            # get image
+            image = self._get_image(filename)
+            images[filename] = images
+        return images
 
-    def __getitem__(self, ind):
-        filename = self.filenames[ind]
+    def _get_image(self, filename):
         # use cache data if loaded already
         if filename in self.image_dict:
             image = self.image_dict[filename]
@@ -55,7 +62,15 @@ class CIFAR_10_LOADER:
             image.to(self.device)
             if self.cache_data == True:
                 self.image_dict[filename] = image
+        return image
 
+    def __len__(self):
+        return len(self.labels)
+
+    def __getitem__(self, ind):
+        filename = self.filenames[ind]
+        # get image
+        image = self._get_image(filename)
         # get one hot label
         if filename in self.hot_one_cache:
             one_hot_label = self.hot_one_cache[filename]
