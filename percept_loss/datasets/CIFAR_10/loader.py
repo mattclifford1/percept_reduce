@@ -58,7 +58,7 @@ class CIFAR_10_LOADER:
             # load if not cached
             path = os.path.join(CIFAR_10_IMAGE_DIR, filename)
             image = read_image(path)
-            image.to(self.dtype)
+            image = image.to(self.dtype)
             image.to(self.device)
             if self.cache_data == True:
                 self.image_dict[filename] = image
