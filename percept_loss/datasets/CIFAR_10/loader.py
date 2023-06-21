@@ -16,11 +16,13 @@ class CIFAR_10_LOADER:
     def __init__(self, indicies_to_use='all', 
                  image_dict={}, 
                  cache_data=True,
+                 normalise=(-1, 1),
                  dtype=torch.float32,
                  device='cpu'):
         self.indicies_to_use = indicies_to_use
         self.image_dict = image_dict
         self.cache_data = cache_data
+        self.normalise = normalise
         self.dtype = dtype
         self.device = device
 
@@ -63,6 +65,9 @@ class CIFAR_10_LOADER:
             path = os.path.join(CIFAR_10_IMAGE_DIR, filename)
             image = read_image(path)
             image = image.to(self.dtype)
+            image = image/255
+            image = image*(self.normalise[1]-self.normalise[0])
+            image = image + self.normalise[0]
             image.to(self.device)
             if self.cache_data == True:
                 self.image_dict[filename] = image
