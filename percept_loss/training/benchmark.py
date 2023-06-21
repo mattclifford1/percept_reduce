@@ -11,14 +11,20 @@ from percept_loss.loss.losses import cross_entropy
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
-epochs = 10
+epochs = 100
 batch_size = 64
 
 
 # DATASETS
-train_loader = CIFAR_10_LOADER(device=device)
+train_loader = CIFAR_10_LOADER()
+# train_loader = CIFAR_10_LOADER()
+
 # images = train_loader.get_images_dict()
-train_dataloader = DataLoader(train_loader, batch_size=batch_size, shuffle=True)
+train_dataloader = DataLoader(train_loader, 
+                              batch_size=batch_size, 
+                              shuffle=True,
+                            #   num_workers=22
+                              )
 
 # NETWORK
 clf = simple_image_clf()
@@ -33,6 +39,8 @@ for epoch in tqdm(range(epochs), desc='Epoch'):
     for i, data in tqdm(enumerate(train_dataloader, 0), leave=False, total=len(train_loader)/batch_size):
         # get the inputs; data is a list of [inputs, labels]
         inputs, labels = data[0].to(device), data[1].to(device)
+        print(torch.max(inputs))
+        print(torch.min(inputs))
 
         # zero the parameter gradients
         optimiser.zero_grad()
