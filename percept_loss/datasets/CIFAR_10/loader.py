@@ -47,7 +47,7 @@ class CIFAR_10_LOADER:
             filename = self.filenames[ind]
             # get image
             image = self._get_image(filename)
-            images[filename] = images
+            images[filename] = image
         return images
 
     def _get_image(self, filename):
@@ -56,7 +56,7 @@ class CIFAR_10_LOADER:
             image = self.image_dict[filename]
         else:
             # load if not cached
-            path = os.path.join(CIFAR_10_IMAGE_DIR, self.filenames[ind])
+            path = os.path.join(CIFAR_10_IMAGE_DIR, filename)
             image = read_image(path)
             image.to(self.dtype)
             image.to(self.device)
@@ -87,8 +87,11 @@ class CIFAR_10_LOADER:
 if __name__ == '__main__':
     from tqdm import tqdm
     a = CIFAR_10_LOADER()
+    ims = a.get_images_dict()
+
+    b = CIFAR_10_LOADER(image_dict=ims)
 
     # benchmark
     for e in tqdm(range(10)):
-        for i in tqdm(a, leave=False):
+        for i in tqdm(b, leave=False):
             pass
