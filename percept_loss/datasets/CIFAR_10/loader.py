@@ -3,6 +3,7 @@ import pandas as pd
 import torch
 from torchvision.io import read_image
 from percept_loss.datasets.CIFAR_10.VARS import CIFAR_10_META_CSV, CIFAR_10_IMAGE_DIR
+from percept_loss.datasets.CIFAR_10.downloader import download_CIFAR_10
 
 
 class CIFAR_10_LOADER:
@@ -22,7 +23,10 @@ class CIFAR_10_LOADER:
         self.cache_data = cache_data
         self.dtype = dtype
         self.device = device
-    
+
+        # make sure dataset is downloaded
+        download_CIFAR_10()    
+
         self.hot_one_cache = {}
         self.meta_data = pd.read_csv(CIFAR_10_META_CSV)
         self.filenames = self.meta_data['filename'].to_list()
