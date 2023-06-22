@@ -12,12 +12,12 @@ from percept_loss.loss.losses import cross_entropy, MSE, LPIPS, SSIM
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
-epochs = 500
+epochs = 10
 batch_size = 32
 
 
 # DATASETS
-train_loader = CIFAR_10_LOADER(normalise=(0, 1))
+train_loader = CIFAR_10_LOADER(device=device, normalise=(0, 1))
 # train_loader = CIFAR_10_LOADER()
 
 # images = train_loader.get_images_dict()
@@ -39,7 +39,7 @@ loss_metric = MSE() # lr=1e-3
 # loss_metric = LPIPS() 
 # loss_metric.to(device)
 
-loss_metric = SSIM()
+# loss_metric = SSIM()
 
 
 optimiser = optim.SGD(net.parameters(), lr=1e-5)#, momentum=0.9)
@@ -54,7 +54,8 @@ for epoch in tqdm(range(epochs), desc='Epoch'):
         outputs = net(inputs)
         mse_training = mse(inputs, outputs)
         if i%250 == 0:
-            print('mse', mse_training.item())
+            # print('mse', mse_training.item())
+            pass
 
         # zero the parameter gradients
         optimiser.zero_grad()
@@ -65,4 +66,5 @@ for epoch in tqdm(range(epochs), desc='Epoch'):
         loss.backward()
         optimiser.step()
         if i%250 == 0:
-            print('loss', loss.item(), '\n')
+            # print('loss', loss.item(), '\n')
+            pass
