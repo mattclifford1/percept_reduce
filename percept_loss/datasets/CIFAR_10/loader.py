@@ -16,7 +16,7 @@ class CIFAR_10_LOADER:
     def __init__(self, indicies_to_use='all', 
                  image_dict={}, 
                  cache_data=True,
-                 normalise=(-1, 1),
+                 normalise=(0, 1),
                  dtype=torch.float32,
                  device='cpu'):
         self.indicies_to_use = indicies_to_use
