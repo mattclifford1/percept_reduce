@@ -16,6 +16,7 @@ class auto_encoder(nn.Module):
         """
         super().__init__()
         self.name = 'simple'
+        self.latent_dim = latent_dim
         c_hid = base_channel_size
         self.encoder = nn.Sequential(
             nn.Conv2d(num_input_channels, c_hid, kernel_size=3, padding=1, stride=2), # 32x32 => 16x16

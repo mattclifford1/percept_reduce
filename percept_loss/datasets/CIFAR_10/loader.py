@@ -1,4 +1,5 @@
 import os
+from tqdm import tqdm
 import pandas as pd
 import torch
 from torchvision.io import read_image
@@ -29,7 +30,7 @@ class CIFAR_10_LOADER:
         # make sure dataset is downloaded
         download_CIFAR_10()    
 
-        self.hot_one_cache = {}
+        self.label_cache = {}
         self.meta_data = pd.read_csv(CIFAR_10_META_CSV)
         self.filenames = self.meta_data['filename'].to_list()
         self.labels = self.meta_data['label'].to_list()
@@ -49,7 +50,7 @@ class CIFAR_10_LOADER:
         '''get dict of all pre loaded and processed images - useful to pass to other dataset
         so that you only have to read from file and process once'''
         images = {}
-        for ind in range(len(self.labels)):
+        for ind in tqdm(range(len(self.labels)), desc='Loading CIFAR-10', leave=False):
             filename = self.filenames[ind]
             # get image
             image = self._get_image(filename)
@@ -68,10 +69,28 @@ class CIFAR_10_LOADER:
             image = image/255
             image = image*(self.normalise[1]-self.normalise[0])
             image = image + self.normalise[0]
-            image.to(self.device)
+            image = image.to(self.device)
+            # print(self.device)
             if self.cache_data == True:
                 self.image_dict[filename] = image
+        # print(type(image))
         return image
+    
+    def _get_labels(self, ind):
+        if ind in self.label_cache:
+            one_hot = self.label_cache[ind]['one_hot']
+            label = self.label_cache[ind]['label']
+        else:
+            one_hot = torch.zeros(self.num_classes, dtype=self.dtype)
+            one_hot[self.numerical_label[ind]] = 1
+            # one_hot = one_hot.to(self.device)
+            label = torch.tensor(self.numerical_label[ind])
+            # label = label.to(self.device)
+            if self.cache_data == True:
+                self.label_cache[ind] = {'label':{}, 'one_hot':{}}
+                self.label_cache[ind]['one_hot'] = one_hot
+                self.label_cache[ind]['label'] = label
+        return one_hot, label
 
     def __len__(self):
         return len(self.labels)
@@ -80,17 +99,9 @@ class CIFAR_10_LOADER:
         filename = self.filenames[ind]
         # get image
         image = self._get_image(filename)
-        # get one hot label
-        if filename in self.hot_one_cache:
-            one_hot_label = self.hot_one_cache[filename]
-        else:
-            one_hot_label = torch.zeros(self.num_classes, dtype=self.dtype)
-            one_hot_label[self.numerical_label[ind]] = 1
-            one_hot_label.to(self.device)
-            if self.cache_data == True:
-                self.hot_one_cache[filename] = one_hot_label
-
-        return image, one_hot_label
+        # get labels
+        one_hot, label = self._get_labels(ind)
+        return image, one_hot, label
     
 
 if __name__ == '__main__':
