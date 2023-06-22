@@ -1,0 +1,5 @@
+from .CIFAR_10.loader import CIFAR_10_LOADER
+
+DATA_LOADER = {
+    'CIFAR_10': CIFAR_10_LOADER,
+}
