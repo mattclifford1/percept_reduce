@@ -15,6 +15,7 @@ class auto_encoder(nn.Module):
             - act_fn : Activation function used throughout the encoder network
         """
         super().__init__()
+        self.name = 'simple'
         c_hid = base_channel_size
         self.encoder = nn.Sequential(
             nn.Conv2d(num_input_channels, c_hid, kernel_size=3, padding=1, stride=2), # 32x32 => 16x16

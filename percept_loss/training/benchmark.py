@@ -5,20 +5,20 @@ import torch
 from torch.utils.data import DataLoader
 import torch.optim as optim
 from tqdm import tqdm
-from percept_loss.datasets.CIFAR_10.loader import CIFAR_10_LOADER
-from percept_loss.networks.classifier import simple_image_clf
-from percept_loss.networks.autoencoder import auto_encoder
-from percept_loss.loss.losses import cross_entropy, MSE, LPIPS, SSIM
+
+from percept_loss.datasets import DATA_LOADER
+from percept_loss.networks import AUTOENCODER
+from percept_loss.losses import LOSS
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 epochs = 10
 batch_size = 32
+print_feq = 250
 
 
 # DATASETS
-train_loader = CIFAR_10_LOADER(device=device, normalise=(0, 1))
-# train_loader = CIFAR_10_LOADER()
+train_loader = DATA_LOADER['CIFAR_10'](normalise=(0, 1))
 
 # images = train_loader.get_images_dict()
 train_dataloader = DataLoader(train_loader, 
@@ -28,18 +28,18 @@ train_dataloader = DataLoader(train_loader,
                               )
 
 # NETWORK
-net = auto_encoder()
+net = AUTOENCODER['simple']()
 net.to(device)
 
 # TRAINING SIGNAL
-mse = MSE()
+mse = LOSS['MSE']()
 
-loss_metric = MSE() # lr=1e-3
+loss_metric = LOSS['MSE']() # lr=1e-3
 
-# loss_metric = LPIPS() 
+# loss_metric = LOSS['LPIPS']() 
 # loss_metric.to(device)
 
-# loss_metric = SSIM()
+# loss_metric = LOSS['SSIM']()
 
 
 optimiser = optim.SGD(net.parameters(), lr=1e-5)#, momentum=0.9)
@@ -53,8 +53,8 @@ for epoch in tqdm(range(epochs), desc='Epoch'):
         inputs, labels = data[0].to(device), data[1].to(device)
         outputs = net(inputs)
         mse_training = mse(inputs, outputs)
-        if i%250 == 0:
-            # print('mse', mse_training.item())
+        if i%print_feq == 0:
+            print('mse', mse_training.item())
             pass
 
         # zero the parameter gradients
@@ -65,6 +65,6 @@ for epoch in tqdm(range(epochs), desc='Epoch'):
 
         loss.backward()
         optimiser.step()
-        if i%250 == 0:
-            # print('loss', loss.item(), '\n')
+        if i%print_feq == 0:
+            print('loss', loss.item(), '\n')
             pass
