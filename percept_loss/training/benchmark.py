@@ -11,12 +11,20 @@ from percept_loss.testing.encoded_dataset import make_encodings
 from percept_loss.datasets import DATA_LOADER
 from percept_loss.networks import AUTOENCODER
 from percept_loss.losses import LOSS
+from percept_loss.utils.savers import train_saver
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
+# set up parameters
+network = 'conv'
+loss = 'LPIPS'
+
+lr = 1e5
 epochs = 10
-batch_size = 32
-print_feq = 250
+batch_size = 4
+data_percent = 1
+print_feq = 1000
+
 
 
 # DATASETS
@@ -24,6 +32,8 @@ loader = DATA_LOADER['CIFAR_10'](normalise=(0, 1),
                                  device=device, 
                                 #  indicies_to_use=list(range(200))
                                  )
+data_instances = max(min(int(data_percent*len(loader)), len(loader)), 3)
+
 images = loader.get_images_dict()
 
 # get inds
@@ -46,27 +56,27 @@ test_dataloader = DataLoader(test_loader,  # type: ignore
                             drop_last=False)
 
 # NETWORK
-net = AUTOENCODER['simple']()
+net = AUTOENCODER[network]()
 net.to(device)
 
+mse = LOSS['MSE']() # for eval
 # TRAINING SIGNAL
-mse = LOSS['MSE']()
-
-loss_metric = LOSS['MSE']() # lr=1e-3
-
-# loss_metric = LOSS['LPIPS']() 
-# loss_metric.to(device)
-
-# loss_metric = LOSS['SSIM']()
+loss_metric = LOSS[loss]() # lr=1e-3
+if loss == 'LPIPS':
+    loss_metric.to(device)
 
 
 # optimiser = optim.SGD(net.parameters(), lr=1e-5)#, momentum=0.9)
-optimiser = optim.Adam(net.parameters(), lr=1e-5)
+optimiser = optim.Adam(net.parameters())#, lr=lr)
 
 
+
+# TRAINING
+saver = train_saver(epochs, loss, network, batch_size, lr, data_instances) # saver
+# loop
 for epoch in tqdm(range(epochs), desc='Epoch'):
     # test of classifier from encodings
-    make_encodings(val_dataloader, net, device)
+    # make_encodings(val_dataloader, net, device)
     for i, data in enumerate(train_dataloader, 0):
         # get the inputs; data is a list of [inputs, labels]
         # inputs, one_hot_labels, numerical_labels = data[0].to(device), data[1].to(device), data[2].to(device)
@@ -74,9 +84,9 @@ for epoch in tqdm(range(epochs), desc='Epoch'):
         # run through the network
         outputs = net(inputs)
         if i%print_feq == 0:
+            
             mse_training = mse(inputs, outputs)
-            # print('mse', mse_training.item())
-            pass
+            print('mse', mse_training.item())
 
         # zero the parameter gradients
         optimiser.zero_grad()
@@ -89,5 +99,6 @@ for epoch in tqdm(range(epochs), desc='Epoch'):
         if i%print_feq == 0:
             # print('loss', loss.item(), '\n')
             pass
+    saver.write_images([inputs, outputs], epoch)
 
     
