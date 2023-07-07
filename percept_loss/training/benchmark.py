@@ -7,7 +7,7 @@ import torch.optim as optim
 from tqdm import tqdm
 
 from percept_loss.datasets.proportions import get_indicies
-from percept_loss.testing.encoded_dataset import make_encodings
+from percept_loss.testing.benchmark_encodings import random_forest_test
 from percept_loss.datasets import DATA_LOADER
 from percept_loss.networks import AUTOENCODER
 from percept_loss.losses import LOSS
@@ -18,11 +18,13 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 # set up parameters
 network = 'conv'
 loss = 'LPIPS'
+print(loss)
 
 lr = 1e5
-epochs = 10
-batch_size = 4
+epochs = 100
+batch_size = 32
 data_percent = 1
+print(data_percent)
 print_feq = 1000
 
 
@@ -74,9 +76,20 @@ optimiser = optim.Adam(net.parameters())#, lr=lr)
 # TRAINING
 saver = train_saver(epochs, loss, network, batch_size, lr, data_instances) # saver
 # loop
+
+class dummy_encoder:
+    def __init__(self):
+        self.latent_dim = 32*32*3
+
+    def encoder_forward(self, x):
+        return x
+
+# acc = random_forest_test(val_dataloader, dummy_encoder(), device)
+# print(f'Random Forest data Accuracy: {acc}')
+acc = random_forest_test(val_dataloader, net, device)
+print(f'Random Forest init Accuracy: {acc}')
 for epoch in tqdm(range(epochs), desc='Epoch'):
     # test of classifier from encodings
-    # make_encodings(val_dataloader, net, device)
     for i, data in enumerate(train_dataloader, 0):
         # get the inputs; data is a list of [inputs, labels]
         # inputs, one_hot_labels, numerical_labels = data[0].to(device), data[1].to(device), data[2].to(device)
@@ -86,7 +99,7 @@ for epoch in tqdm(range(epochs), desc='Epoch'):
         if i%print_feq == 0:
             
             mse_training = mse(inputs, outputs)
-            print('mse', mse_training.item())
+            # print('mse', mse_training.item())
 
         # zero the parameter gradients
         optimiser.zero_grad()
@@ -99,6 +112,7 @@ for epoch in tqdm(range(epochs), desc='Epoch'):
         if i%print_feq == 0:
             # print('loss', loss.item(), '\n')
             pass
-    saver.write_images([inputs, outputs], epoch)
+    acc = random_forest_test(val_dataloader, net, device)
+    saver.write_images([inputs, outputs], epoch, extra_name=f'rf_acc-{acc}')
 
     
