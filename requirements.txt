@@ -4,3 +4,4 @@ tqdm
 pandas
 torchmetrics[image]
 scikit-learn
+pytorch-msssim
