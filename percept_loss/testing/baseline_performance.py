@@ -3,7 +3,7 @@ import torch.optim as optim
 from tqdm import tqdm
 
 from percept_loss.datasets.torch_loaders import get_all_loaders
-from percept_loss.testing.benchmark_encodings import random_forest_test
+from percept_loss.testing.benchmark_encodings import test_all_classifiers
 from percept_loss.networks import AUTOENCODER
 from percept_loss.losses import LOSS
 from percept_loss.utils.savers import train_saver
@@ -16,8 +16,7 @@ print(f'network: {network}')
 
 
 # DATASETS
-_, _, test_dataloader, _ = get_all_loaders(device=device,
-                                                                                 batch_size=32)
+_, _, test_dataloader, _ = get_all_loaders(device=device, batch_size=32)
 
 # used to get the baseline performance
 class dummy_encoder:
@@ -27,5 +26,5 @@ class dummy_encoder:
     def encoder_forward(self, x):
         return x
 
-acc = random_forest_test(test_dataloader, dummy_encoder(), device)
-print(f'Random Forest data Accuracy: {acc*100}')
+acc = test_all_classifiers(test_dataloader, dummy_encoder(), device, verbose=True)
+print(f'all classifiers accuracy:\n{acc}')
