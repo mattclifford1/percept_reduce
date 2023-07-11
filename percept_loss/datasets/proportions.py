@@ -11,7 +11,12 @@ def get_indicies(proportions=[0.7, 0.3], total_instances=60000, seed=42):
     if sum(proportions) != 1:
         raise ValueError(f'proportions need to sum to 1, got: {proportions}')
     # get randomly ordered inds of the dataset
-    inds = list(range(total_instances))
+    if isinstance(total_instances, int):
+        inds = list(range(total_instances))
+    elif isinstance(total_instances, list):
+        inds = total_instances
+    else:
+        raise ValueError(f'total_instances needs to be int or list not {type(total_instances)}')
     random.seed(seed)
     random.shuffle(inds)
     # get each proportion

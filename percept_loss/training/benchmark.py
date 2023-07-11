@@ -34,16 +34,19 @@ loader = DATA_LOADER['CIFAR_10'](normalise=(0, 1),
                                  device=device, 
                                 #  indicies_to_use=list(range(200))
                                  )
-data_instances = max(min(int(data_percent*len(loader)), len(loader)), 3)
 
-images = loader.get_images_dict()
 
-# get inds
+pre_loaded_images = loader.get_images_dict()
+
+# get inds (split into train, val, test)
 train_inds, val_inds, test_inds = get_indicies([0.4, 0.3, 0.3], total_instances=len(loader))
+# reduce the amount of training data
+train_total = max(min(int(data_percent*len(train_inds)), len(train_inds)), 1)
+train_inds = train_inds[:train_total]   # inds are shuffled already so we can take a random sample
 # get loaders
-train_loader = DATA_LOADER['CIFAR_10'](normalise=(0, 1), indicies_to_use=train_inds, image_dict=images)
-val_loader = DATA_LOADER['CIFAR_10'](normalise=(0, 1), indicies_to_use=val_inds, image_dict=images)
-test_loader = DATA_LOADER['CIFAR_10'](normalise=(0, 1), indicies_to_use=test_inds, image_dict=images)
+train_loader = DATA_LOADER['CIFAR_10'](normalise=(0, 1), indicies_to_use=train_inds, image_dict=pre_loaded_images)
+val_loader = DATA_LOADER['CIFAR_10'](normalise=(0, 1), indicies_to_use=val_inds, image_dict=pre_loaded_images)
+test_loader = DATA_LOADER['CIFAR_10'](normalise=(0, 1), indicies_to_use=test_inds, image_dict=pre_loaded_images)
 # get torch loaders
 train_dataloader = DataLoader(train_loader,  # type: ignore
                               batch_size=batch_size, 
@@ -74,9 +77,11 @@ optimiser = optim.Adam(net.parameters())#, lr=lr)
 
 
 # TRAINING
-saver = train_saver(epochs, loss, network, batch_size, lr, data_instances) # saver
+saver = train_saver(epochs, loss, network, batch_size, lr, len(train_inds)) # saver
 # loop
 
+
+# used to get the baseline performance
 class dummy_encoder:
     def __init__(self):
         self.latent_dim = 32*32*3
@@ -86,7 +91,7 @@ class dummy_encoder:
 
 # acc = random_forest_test(val_dataloader, dummy_encoder(), device)
 # print(f'Random Forest data Accuracy: {acc}')
-acc = random_forest_test(val_dataloader, net, device)
+acc = random_forest_test(test_dataloader, net, device)
 print(f'Random Forest init Accuracy: {acc}')
 for epoch in tqdm(range(epochs), desc='Epoch'):
     # test of classifier from encodings
@@ -112,7 +117,7 @@ for epoch in tqdm(range(epochs), desc='Epoch'):
         if i%print_feq == 0:
             # print('loss', loss.item(), '\n')
             pass
-    acc = random_forest_test(val_dataloader, net, device)
+    acc = random_forest_test(test_dataloader, net, device)
     saver.write_images([inputs, outputs], epoch, extra_name=f'rf_acc-{acc}')
 
     
