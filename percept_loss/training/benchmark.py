@@ -17,7 +17,7 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # set up parameters
 network = 'conv'
-loss = 'LPIPS'
+loss = 'MSSIM'
 print(loss)
 
 lr = 1e5
