@@ -24,10 +24,10 @@ def get_all_loaders(train_percept_reduce=0.5, props=[0.4, 0.3, 0.3], device='cpu
                                 shuffle=True)
     val_dataloader = DataLoader(val_loader,  # type: ignore
                                 batch_size=batch_size, 
-                                shuffle=True,
+                                shuffle=False,
                                 drop_last=False)
     test_dataloader = DataLoader(test_loader,  # type: ignore
                                 batch_size=batch_size, 
-                                shuffle=True,
+                                shuffle=False,
                                 drop_last=False)
     return train_dataloader, val_dataloader, test_dataloader, train_total
