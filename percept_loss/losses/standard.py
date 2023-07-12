@@ -9,3 +9,7 @@ def MSE():
     criterion = nn.MSELoss()
     return criterion
 
+def MAE():
+    criterion = nn.L1Loss()
+    return criterion
+

@@ -2,13 +2,11 @@
 simple trainer to test pipeline is working
 '''
 import torch
-from torch.utils.data import DataLoader
 import torch.optim as optim
 from tqdm import tqdm
 
-from percept_loss.datasets.proportions import get_indicies
+from percept_loss.datasets.torch_loaders import get_all_loaders
 from percept_loss.testing.benchmark_encodings import random_forest_test
-from percept_loss.datasets import DATA_LOADER
 from percept_loss.networks import AUTOENCODER
 from percept_loss.losses import LOSS
 from percept_loss.utils.savers import train_saver
@@ -30,35 +28,9 @@ print_feq = 1000
 
 
 # DATASETS
-loader = DATA_LOADER['CIFAR_10'](normalise=(0, 1), 
-                                 device=device, 
-                                #  indicies_to_use=list(range(200))
-                                 )
+train_dataloader, val_dataloader, test_dataloader, train_total = get_all_loaders(train_percept_reduce=data_percent,
+                                                                                 device=device)
 
-
-pre_loaded_images = loader.get_images_dict()
-
-# get inds (split into train, val, test)
-train_inds, val_inds, test_inds = get_indicies([0.4, 0.3, 0.3], total_instances=len(loader))
-# reduce the amount of training data
-train_total = max(min(int(data_percent*len(train_inds)), len(train_inds)), 1)
-train_inds = train_inds[:train_total]   # inds are shuffled already so we can take a random sample
-# get loaders
-train_loader = DATA_LOADER['CIFAR_10'](normalise=(0, 1), indicies_to_use=train_inds, image_dict=pre_loaded_images)
-val_loader = DATA_LOADER['CIFAR_10'](normalise=(0, 1), indicies_to_use=val_inds, image_dict=pre_loaded_images)
-test_loader = DATA_LOADER['CIFAR_10'](normalise=(0, 1), indicies_to_use=test_inds, image_dict=pre_loaded_images)
-# get torch loaders
-train_dataloader = DataLoader(train_loader,  # type: ignore
-                              batch_size=batch_size, 
-                              shuffle=True)
-val_dataloader = DataLoader(val_loader,  # type: ignore
-                            batch_size=batch_size, 
-                            shuffle=True,
-                            drop_last=False)
-test_dataloader = DataLoader(test_loader,  # type: ignore
-                            batch_size=batch_size, 
-                            shuffle=True,
-                            drop_last=False)
 
 # NETWORK
 net = AUTOENCODER[network]()
@@ -77,20 +49,11 @@ optimiser = optim.Adam(net.parameters())#, lr=lr)
 
 
 # TRAINING
-saver = train_saver(epochs, loss, network, batch_size, lr, len(train_inds)) # saver
+saver = train_saver(epochs, loss, network, batch_size, lr, train_total) # saver
 # loop
 
 
-# used to get the baseline performance
-class dummy_encoder:
-    def __init__(self):
-        self.latent_dim = 32*32*3
 
-    def encoder_forward(self, x):
-        return x
-
-# acc = random_forest_test(val_dataloader, dummy_encoder(), device)
-# print(f'Random Forest data Accuracy: {acc}')
 acc = random_forest_test(test_dataloader, net, device)
 print(f'Random Forest init Accuracy: {acc}')
 for epoch in tqdm(range(epochs), desc='Epoch'):
