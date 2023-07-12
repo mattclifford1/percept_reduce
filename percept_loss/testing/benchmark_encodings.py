@@ -16,16 +16,17 @@ import multiprocessing
 
 from .encoded_dataset import make_encodings
 
-def random_forest_test(data_loader, autoencoder, device):
+def random_GaussianNB_test(data_loader, autoencoder, device):
+    # quickest to train and test for dev purposes
     X, y = make_encodings(data_loader, autoencoder, device)
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.33, random_state=42)
     
-    clf = RandomForestClassifier(random_state=42)
+    clf = GaussianNB()
     clf.fit(X_train, y_train)
 
     y_pred = clf.predict(X_test)
     acc = accuracy_score(y_test, y_pred)
-    return acc
+    return {'NB': acc}
 
 def test_all_classifiers(data_loader, autoencoder, device, verbose=False):
     random_state=42

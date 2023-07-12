@@ -2,15 +2,20 @@ from torch.utils.data import DataLoader
 from percept_loss.datasets import DATA_LOADER
 from percept_loss.datasets.proportions import get_indicies
 
-def get_all_loaders(train_percept_reduce=0.5, props=[0.4, 0.3, 0.3], device='cpu', batch_size=32):
+
+def get_preloaded(device='cpu'):
     # load the main dataset images etc.
     loader = DATA_LOADER['CIFAR_10'](normalise=(0, 1), 
-                                    device=device, 
-                                    )
+                                    device=device)
     pre_loaded_images = loader.get_images_dict()
+    return pre_loaded_images
+
+def get_all_loaders(train_percept_reduce=0.5, props=[0.4, 0.3, 0.3], device='cpu', batch_size=32, pre_loaded_images=None):
+    if pre_loaded_images == None:
+        pre_loaded_images = get_preloaded(device=device)
 
     # get inds - split into train, val and test
-    train_inds, val_inds, test_inds = get_indicies(props, total_instances=len(loader))
+    train_inds, val_inds, test_inds = get_indicies(props, total_instances=len(pre_loaded_images))
     # reduce the amount of training data
     train_total = max(min(int(train_percept_reduce*len(train_inds)), len(train_inds)), 1)
     train_inds = train_inds[:train_total]   # inds are shuffled already so we can take a random sample
