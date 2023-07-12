@@ -31,7 +31,8 @@ if __name__ == '__main__':
     runs = {
         'loss': ['SSIM', 'MSE', 'LPIPS', 'MSSIM'],
         'data_percent': [1, 0.5, 0.1, 0.01],
-        'network': ['conv_small_z', 'conv_bigger_z', 'conv_big_z'],
+        # 'network': ['conv_small_z', 'conv_bigger_z', 'conv_big_z'],
+        'network': ['conv_biggest_z'],
     }
     all_runs = get_all_dict_permutations(runs)
 
