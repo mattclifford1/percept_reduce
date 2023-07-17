@@ -28,28 +28,31 @@ def random_GaussianNB_test(data_loader, autoencoder, device):
     acc = accuracy_score(y_test, y_pred)
     return {'NB': acc}
 
-def test_all_classifiers(data_loader, autoencoder, device, verbose=False):
+def test_all_classifiers(data=None, autoencoder=None, device=None, data_loader=None, verbose=False):
     random_state=42
     classifiers = {
         'KNN': KNeighborsClassifier(3),
         # 'SVM-linear': SVC(kernel="linear", C=0.025, random_state=random_state),
         # 'SVM': SVC(gamma=2, C=1, random_state=random_state),
         # 'GP': GaussianProcessClassifier(1.0 * RBF(1.0), random_state=random_state),
-        'Tree': DecisionTreeClassifier(random_state=random_state),
-        'RF': RandomForestClassifier(random_state=random_state),
+        # 'Tree': DecisionTreeClassifier(random_state=random_state),
+        # 'RF': RandomForestClassifier(random_state=random_state),
         'MLP': MLPClassifier(alpha=1, max_iter=1000, random_state=random_state),
-        'ADA-Boost': AdaBoostClassifier(random_state=random_state),
-        'NB': GaussianNB(),
+        # 'ADA-Boost': AdaBoostClassifier(random_state=random_state),
+        # 'NB': GaussianNB(),
         # 'QDA': QuadraticDiscriminantAnalysis(),
     }
-
-    X, y = make_encodings(data_loader, autoencoder, device)
+    if data == None:
+        X, y = make_encodings(data_loader, autoencoder, device)
+    else:
+        X, y = data
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.33, random_state=42)
-    if verbose == True:
-        print(f'made encoded dataset')
-        for name, labels in zip(['train', 'test'], [y_train, y_test]):
-            unique, counts = np.unique(labels, return_counts=True)
-            print(f'{name} label proportions \n{np.asarray((unique, counts)).T}')
+
+    # if verbose == True:
+    #     print(f'made encoded dataset')
+    #     for name, labels in zip(['train', 'test'], [y_train, y_test]):
+    #         unique, counts = np.unique(labels, return_counts=True)
+    #         print(f'{name} label proportions \n{np.asarray((unique, counts)).T}')
 
     data = []
     for name, clf in classifiers.items():
