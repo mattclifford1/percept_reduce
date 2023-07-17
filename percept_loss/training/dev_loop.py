@@ -28,14 +28,18 @@ def run(pre_loaded_images=None, async_test=True):
 
 
 if __name__ == '__main__':
-    pre_loaded_images = get_preloaded()
-    reps =timeit.repeat(stmt=lambda: run(pre_loaded_images, True), repeat=10)
-    avg = np.mean(reps)
-    print(f'Asunc true: {avg}')
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    pre_loaded_images = get_preloaded(device)
+    run(pre_loaded_images, True)
+    run(pre_loaded_images, False)
+    print('run warmup')
 
-    reps =timeit.repeat(stmt=lambda: run(pre_loaded_images, False), repeat=10)
-    avg = np.mean(reps)
-    print(f'Asunc false: {avg}')
+    # timeit
+    avg_async =timeit.timeit(stmt=lambda: run(pre_loaded_images, True), number=20)
+
+    avg_no_async =timeit.timeit(stmt=lambda: run(pre_loaded_images, False), number=20)
+    print(f'Asunc true: {avg_async}')
+    print(f'Asunc false: {avg_no_async}')
     
 
 
