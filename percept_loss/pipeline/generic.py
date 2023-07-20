@@ -49,7 +49,16 @@ def run(runs, AUTOENCODERS, epochs=30, batch_size=32, preload_data=False, datase
         network_func = AUTOENCODERS[network]()
         # run
         if saver.previously_done == False:
-            train(network_func, loss_func, scaled_epochs, device, saver, data_percent, pre_loaded_images, validate_every, dataset=dataset)
+            train(network=network_func, 
+                  loss=loss_func, 
+                  epochs=scaled_epochs, 
+                  device=device, 
+                  saver=saver, 
+                  data_percent=data_percent, 
+                  pre_loaded_images=pre_loaded_images, 
+                  verbose=False
+                  validate_every=validate_every, 
+                  dataset=dataset)
 
 
 if __name__ == '__main__':

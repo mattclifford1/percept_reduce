@@ -84,7 +84,7 @@ def train(network, loss, epochs, device, saver, data_percent, pre_loaded_images=
     main training loop
     '''
     if validate_every == 1: # know we have a big dataset so decrease validation/test set size
-        props = [0.8, 0.1, 0.1]
+        props = [0.89, 0.1, 0.01]
     else:
         props = [0.4, 0.3, 0.3]
     train_dataloader, val_dataloader, test_dataloader, _ = get_all_loaders(train_percept_reduce=data_percent,
