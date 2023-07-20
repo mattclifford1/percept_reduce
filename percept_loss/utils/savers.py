@@ -4,15 +4,17 @@ import numpy as np
 import pandas as pd
 
 class train_saver:
-    def __init__(self, epochs, loss, network, batch_size, datasize, base_save='saves'):
+    def __init__(self, epochs, loss, network, batch_size, datasize, dataset, base_save='saves'):
         self.epochs = epochs
         self.loss = loss
         self.network = network
         self.batch_size = batch_size
         self.datasize = datasize
+        self.dataset = dataset
 
-        self.unique_name = f"{network}-{datasize}-{epochs}-{loss}-{self.batch_size}"
-        self.save_dir = os.path.join(base_save, self.unique_name)
+        self.unique_name = [f'{dataset}', f'{network}', f'{loss}-{datasize}-BS{self.batch_size}']
+
+        self.save_dir = os.path.join(base_save, *self.unique_name)
         os.makedirs(self.save_dir, exist_ok=True)
         self.image_dir = os.path.join(self.save_dir, 'images')
         os.makedirs(self.image_dir, exist_ok=True)

@@ -5,9 +5,9 @@ import torch
 import torch.optim as optim
 from tqdm import tqdm
 
-from percept_loss.datasets.torch_loaders import get_all_loaders
+from percept_loss.datasets.torch_loaders import get_all_loaders_CIFAR
 from percept_loss.testing.benchmark_encodings import random_forest_test
-from percept_loss.networks import AUTOENCODER
+from percept_loss.networks import CIFAR_AUTOENCODERS
 from percept_loss.losses import LOSS
 from percept_loss.utils.savers import train_saver
 
@@ -28,12 +28,12 @@ print_feq = 1000
 
 
 # DATASETS
-train_dataloader, val_dataloader, test_dataloader, train_total = get_all_loaders(train_percept_reduce=data_percent,
+train_dataloader, val_dataloader, test_dataloader, train_total = get_all_loaders_CIFAR(train_percept_reduce=data_percent,
                                                                                  device=device)
 
 
 # NETWORK
-net = AUTOENCODER[network]()
+net = CIFAR_AUTOENCODERS[network]()
 net.to(device)
 
 mse = LOSS['MSE']() # for eval

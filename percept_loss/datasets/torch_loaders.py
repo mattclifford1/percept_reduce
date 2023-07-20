@@ -10,7 +10,7 @@ def get_preloaded(device='cpu'):
     pre_loaded_images = loader.get_images_dict()
     return pre_loaded_images
 
-def get_all_loaders(train_percept_reduce=0.5, props=[0.4, 0.3, 0.3], device='cpu', batch_size=32, pre_loaded_images=None):
+def get_all_loaders_CIFAR(train_percept_reduce=0.5, props=[0.4, 0.3, 0.3], device='cpu', batch_size=32, pre_loaded_images=None):
     if pre_loaded_images == None:
         pre_loaded_images = get_preloaded(device=device)
 

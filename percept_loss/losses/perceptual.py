@@ -36,8 +36,14 @@ def NLPD(nlpd_k=1):
         metric = LaplacianPyramid(nlpd_k)
     return metric
 
-def DISTS():
-    with warnings.catch_warnings():    # we don't care about the warnings these give
-        warnings.simplefilter("ignore")
-        metric = dists_original()()
-    return metric
+class DISTS():
+    def __init__(self):
+        with warnings.catch_warnings():    # we don't care about the warnings these give
+            warnings.simplefilter("ignore")
+            self.metric = dists_original()
+    
+    def to(self, *args, **kwargs):
+        self.metric.to(*args, **kwargs)
+    
+    def __call__(self, *args, **kwargs):
+        return self.metric(*args, **kwargs, require_grad=True, batch_average=True)

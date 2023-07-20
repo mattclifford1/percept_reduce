@@ -12,7 +12,6 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
 
 import numpy as np
-import multiprocessing
 
 from .encoded_dataset import make_encodings
 
@@ -31,7 +30,7 @@ def random_GaussianNB_test(data_loader, autoencoder, device):
 def test_all_classifiers(data=None, autoencoder=None, device=None, data_loader=None, verbose=False):
     random_state=42
     classifiers = {
-        'KNN': KNeighborsClassifier(3),
+        'KNN': KNeighborsClassifier(),
         # 'SVM-linear': SVC(kernel="linear", C=0.025, random_state=random_state),
         # 'SVM': SVC(gamma=2, C=1, random_state=random_state),
         # 'GP': GaussianProcessClassifier(1.0 * RBF(1.0), random_state=random_state),
@@ -39,7 +38,7 @@ def test_all_classifiers(data=None, autoencoder=None, device=None, data_loader=N
         # 'RF': RandomForestClassifier(random_state=random_state),
         'MLP': MLPClassifier(alpha=1, max_iter=1000, random_state=random_state),
         # 'ADA-Boost': AdaBoostClassifier(random_state=random_state),
-        # 'NB': GaussianNB(),
+        'NB': GaussianNB(),
         # 'QDA': QuadraticDiscriminantAnalysis(),
     }
     if data == None:
