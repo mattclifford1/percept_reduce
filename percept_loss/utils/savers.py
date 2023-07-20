@@ -20,7 +20,9 @@ class train_saver:
         os.makedirs(self.image_dir, exist_ok=True)
         self.csv_file = os.path.join(self.save_dir, f'training_results.csv')
         if os.path.exists(self.csv_file):
-            os.remove(self.csv_file)
+            self.previously_done = True
+        else:
+            self.previously_done = False
 
         self.image_save_counter = 0
 

@@ -24,7 +24,7 @@ def get_all_dict_permutations(dict_):
 if __name__ == '__main__':
     # fixed things for all runs
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    epochs = 10
+    epochs = 30
     batch_size = 32
     # DATA
     pre_loaded_images = get_preloaded(device=device)
@@ -47,12 +47,14 @@ if __name__ == '__main__':
         data_percent = run['data_percent']
         if not isinstance(data_percent, str):
             scaled_epochs = int(epochs/data_percent)
+            scaled_epochs = epochs
         else:
             scaled_epochs = epochs
         saver = train_saver(scaled_epochs, loss, network, batch_size, data_percent, dataset='CIFAR') # saver
         loss_func = LOSS[loss]()
         network_func = CIFAR_AUTOENCODERS[network]()
-        train(network_func, loss_func, scaled_epochs, device, saver, data_percent, pre_loaded_images)
+        if saver.previously_done == False:
+            train(network_func, loss_func, scaled_epochs, device, saver, data_percent, pre_loaded_images)
 
 
 
