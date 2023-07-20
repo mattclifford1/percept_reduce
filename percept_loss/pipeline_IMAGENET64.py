@@ -6,8 +6,8 @@ runs = {
     # 'data_percent': ['uniform', 0.5, 0.1],
     'loss': ['SSIM', 'MSE', 'LPIPS', 'MSSIM', 'DISTS', 'NLPD'],
     # 'loss': ['DISTS', 'NLPD'],
-    # 'network': ['conv_small_z', 'conv_bigger_z', 'conv_big_z'],
-    'network': ['standard'],
+    # 'network': ['standard'],
+    'network': ['bigger_z'],
 }
 
 percept_loss.pipeline.generic.run(runs, IMAGENET64_AUTOENCODERS, epochs=30, batch_size=32, preload_data=True, dataset='IMAGENET64_VAL', validate_every=2)
