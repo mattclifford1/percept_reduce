@@ -70,10 +70,8 @@ class CIFAR_10_LOADER:
             image = image*(self.normalise[1]-self.normalise[0])
             image = image + self.normalise[0]
             image = image.to(self.device)
-            # print(self.device)
             if self.cache_data == True:
                 self.image_dict[filename] = image
-        # print(type(image))
         return image
     
     def _get_labels(self, ind):

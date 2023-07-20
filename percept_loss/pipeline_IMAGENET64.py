@@ -1,8 +1,3 @@
-'''
-simple trainer to test pipeline is working
-'''
-from tqdm import tqdm
-
 from percept_loss.networks import IMAGENET64_AUTOENCODERS
 import percept_loss.pipeline.generic
 # run configs
@@ -15,4 +10,4 @@ runs = {
     'network': ['standard'],
 }
 
-percept_loss.pipeline.generic.run(runs, IMAGENET64_AUTOENCODERS, epochs=30, batch_size=32, preload_data=True, dataset='IMAGENET64_VAL', validate_every=1)
+percept_loss.pipeline.generic.run(runs, IMAGENET64_AUTOENCODERS, epochs=30, batch_size=32, preload_data=True, dataset='IMAGENET64_VAL', validate_every=2)
