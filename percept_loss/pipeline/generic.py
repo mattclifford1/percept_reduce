@@ -56,7 +56,7 @@ def run(runs, AUTOENCODERS, epochs=30, batch_size=32, preload_data=False, datase
                   saver=saver, 
                   data_percent=data_percent, 
                   pre_loaded_images=pre_loaded_images, 
-                  verbose=False
+                  verbose=False,
                   validate_every=validate_every, 
                   dataset=dataset)
 
