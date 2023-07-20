@@ -79,7 +79,7 @@ class test_and_saver():
             self.running_thread.join()  
     
 
-def train(network, loss, epochs, device, saver, data_percent, pre_loaded_images=None, verbose=False, async_test=True, validate_every=2):
+def train(network, loss, epochs, device, saver, data_percent, pre_loaded_images=None, verbose=False, async_test=True, validate_every=2, dataset='CIFAR_10'):
     '''
     main training loop
     '''
@@ -90,7 +90,8 @@ def train(network, loss, epochs, device, saver, data_percent, pre_loaded_images=
     train_dataloader, val_dataloader, test_dataloader, _ = get_all_loaders(train_percept_reduce=data_percent,
                                                                            device=device,
                                                                            pre_loaded_images=pre_loaded_images,
-                                                                           props=props)
+                                                                           props=props,
+                                                                           dataset=dataset)
 
     # NETWORK
     net = network
@@ -114,7 +115,6 @@ def train(network, loss, epochs, device, saver, data_percent, pre_loaded_images=
             inputs = data[0].to(device)
             # run through the network
             outputs = net(inputs)
-
             # zero the parameter gradients
             optimiser.zero_grad()
 
