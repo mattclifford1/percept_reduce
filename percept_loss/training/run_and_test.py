@@ -11,6 +11,7 @@ from percept_loss.datasets.torch_loaders import get_all_loaders_CIFAR
 from percept_loss.testing.benchmark_encodings import random_GaussianNB_test, test_all_classifiers
 from percept_loss.testing.encoded_dataset import make_encodings
 from percept_loss.utils.savers import train_saver
+from percept_loss.losses import LOSS
 
 def validate(net, loader, loss_metric, device):
     '''
