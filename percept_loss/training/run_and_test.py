@@ -7,11 +7,9 @@ import torch
 import torch.optim as optim
 from tqdm import tqdm
 
-from percept_loss.datasets.torch_loaders import get_all_loaders
+from percept_loss.datasets.torch_loaders import get_all_loaders_CIFAR
 from percept_loss.testing.benchmark_encodings import random_GaussianNB_test, test_all_classifiers
 from percept_loss.testing.encoded_dataset import make_encodings
-from percept_loss.networks import AUTOENCODER
-from percept_loss.losses import LOSS
 from percept_loss.utils.savers import train_saver
 
 def validate(net, loader, loss_metric, device):
@@ -84,16 +82,16 @@ def train(network, loss, epochs, device, saver, data_percent, pre_loaded_images=
     '''
     main training loop
     '''
-    train_dataloader, val_dataloader, test_dataloader, _ = get_all_loaders(train_percept_reduce=data_percent,
+    train_dataloader, val_dataloader, test_dataloader, _ = get_all_loaders_CIFAR(train_percept_reduce=data_percent,
                                                                            device=device,
                                                                            pre_loaded_images=pre_loaded_images)
 
     # NETWORK
-    net = AUTOENCODER[network]()
+    net = network
     net.to(device)
 
     # TRAINING SIGNAL
-    loss_metric = LOSS[loss]()
+    loss_metric = loss
     loss_metric.to(device)
 
     # optimiser = optim.SGD(net.parameters(), lr=1e-5)#, momentum=0.9)
@@ -125,23 +123,23 @@ def train(network, loss, epochs, device, saver, data_percent, pre_loaded_images=
 
 
 if __name__ == '__main__':
+    from percept_loss.networks import CIFAR_AUTOENCODERS
+    from percept_loss.losses import LOSS
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     # set up parameters
-    network = 'conv'
-    loss = 'MSSIM'
-    print(loss)
+    network = CIFAR_AUTOENCODERS['conv_biggest_z']()
+    loss_str = 'MSSIM'
+    loss = LOSS[loss_str]()
+    print(loss_str)
 
-    lr = 1e5
     epochs = 20
     batch_size = 32
     data_percent = 1
     print(data_percent)
-    print_feq = 1000
-
 
 
     # DATASETS
-    train_dataloader, val_dataloader, test_dataloader, train_total = get_all_loaders(train_percept_reduce=data_percent,
+    train_dataloader, val_dataloader, test_dataloader, train_total = get_all_loaders_CIFAR(train_percept_reduce=data_percent,
                                                                                     device=device)
 
     # TRAINING

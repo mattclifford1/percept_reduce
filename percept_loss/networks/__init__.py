@@ -3,7 +3,7 @@ from .linear_autoencoder import linear_AE
 from .cifar_autoencoder import Autoencoder_mini, Autoencoder2, Autoencoder_small, Autoencoder_big
 
 
-AUTOENCODER = {
+CIFAR_AUTOENCODERS = {
     # 'simple_conv': auto_encoder,  # not working
     # 'linear': linear_AE,    # not working
     'conv_small_z': Autoencoder_mini,
@@ -12,6 +12,7 @@ AUTOENCODER = {
     'conv_biggest_z': Autoencoder_big,
 
 }
+# N.B do not include '-' in names as inteferes with saving schema
 
 CLASSIFIER = {
     

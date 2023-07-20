@@ -10,6 +10,8 @@ import numpy as np
 from percept_loss.training.run_and_test import train
 from percept_loss.datasets.torch_loaders import get_preloaded
 from percept_loss.utils.savers import train_saver
+from percept_loss.networks import CIFAR_AUTOENCODERS
+from percept_loss.losses import LOSS
 
 def run(pre_loaded_images=None, async_test=True):
     # fixed things for all runs
@@ -19,8 +21,8 @@ def run(pre_loaded_images=None, async_test=True):
     # DATA
     if pre_loaded_images ==  None:
         pre_loaded_images = get_preloaded(device=device)
-    loss = 'LPIPS'
-    network = 'conv_biggest_z'
+    loss = LOSS['MSE']()
+    network = CIFAR_AUTOENCODERS['conv_biggest_z']()
     data_percent = 1
     saver = train_saver(epochs, loss, network, batch_size, data_percent) # saver
     train(network, loss, epochs, device, saver, data_percent, pre_loaded_images, verbose=False, async_test=async_test)

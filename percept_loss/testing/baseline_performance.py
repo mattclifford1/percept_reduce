@@ -2,9 +2,9 @@ import torch
 import torch.optim as optim
 from tqdm import tqdm
 
-from percept_loss.datasets.torch_loaders import get_all_loaders
+from percept_loss.datasets.torch_loaders import get_all_loaders_CIFAR
 from percept_loss.testing.benchmark_encodings import test_all_classifiers
-from percept_loss.networks import AUTOENCODER
+from percept_loss.networks import CIFAR_AUTOENCODERS
 from percept_loss.losses import LOSS
 from percept_loss.utils.savers import train_saver
 
@@ -16,7 +16,7 @@ print(f'network: {network}')
 
 
 # DATASETS
-_, _, test_dataloader, _ = get_all_loaders(device=device, batch_size=32)
+_, _, test_dataloader, _ = get_all_loaders_CIFAR(device=device, batch_size=32)
 
 # used to get the baseline performance
 class dummy_encoder:

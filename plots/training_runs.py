@@ -33,7 +33,7 @@ for dir in save_folders:
         all_results[net][data_size][validation][loss] = {'epoch': epochs, 'values': scores}
 
 # now plot
-colours = {'SSIM': 'blue', 'LPIPS': 'green', 'MSE': 'red', 'MSSIM': 'orange'}
+colours = {'SSIM': 'blue', 'LPIPS': 'green', 'MSE': 'red', 'MSSIM': 'orange', 'NLPD': 'yellow', 'DISTS': 'pink'}
 h_plots = int(np.ceil(num_subplots/2))
 for net, ds, in all_results.items():
     for data_size, v in ds.items():
