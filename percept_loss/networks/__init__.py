@@ -1,7 +1,7 @@
 from .simple_autoencoder import auto_encoder
 from .linear_autoencoder import linear_AE
 from .cifar_autoencoder import Autoencoder_mini, Autoencoder2, Autoencoder_small, Autoencoder_big
-from .image_net_64_autoencoder import noraml_64
+from .image_net_64_autoencoder import noraml_64, big_64
 
 
 CIFAR_AUTOENCODERS = {
@@ -17,6 +17,7 @@ CIFAR_AUTOENCODERS = {
 
 IMAGENET64_AUTOENCODERS = {
     'standard': noraml_64,
+    'bigger_z': big_64,
 }
 
 CLASSIFIER = {

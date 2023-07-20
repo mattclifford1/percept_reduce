@@ -42,3 +42,37 @@ class noraml_64(nn.Module):
         z = self.encoder_forward(x)
         return self.decoder_forward(z)
     
+
+class big_64(nn.Module):
+    def __init__(self):
+        super(big_64, self).__init__()
+        # Input size: [batch, 3, 32, 32]
+        # Output size: [batch, 3, 32, 32]
+        self.latent_dim = 24*8*8
+        self.encoder = nn.Sequential(
+            nn.Conv2d(3, 6, 4, stride=2, padding=1),            # [batch, 12, 16, 16]
+            nn.ELU(),
+            nn.Conv2d(6, 12, 4, stride=2, padding=1),           # [batch, 24, 8, 8]
+            nn.ELU(),
+			nn.Conv2d(12, 24, 4, stride=2, padding=1),           # [batch, 48, 4, 4]
+            nn.Tanh(),
+        )
+        self.decoder = nn.Sequential(
+			nn.ConvTranspose2d(24, 12, 4, stride=2, padding=1),  # [batch, 24, 8, 8]
+            nn.ELU(),
+			nn.ConvTranspose2d(12, 6, 4, stride=2, padding=1),  # [batch, 12, 16, 16]
+            nn.ELU(),
+            nn.ConvTranspose2d(6, 3, 4, stride=2, padding=1),   # [batch, 3, 32, 32]
+            nn.Sigmoid(),
+        )
+    
+    def encoder_forward(self, x):
+        return self.encoder(x)
+    
+    def decoder_forward(self, z):
+        return self.decoder(z)
+    
+    def forward(self, x):
+        z = self.encoder_forward(x)
+        return self.decoder_forward(z)
+    
