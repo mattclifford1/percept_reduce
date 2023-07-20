@@ -27,18 +27,21 @@ class train_saver:
         self.image_save_counter = 0
 
     def write_images(self, torch_images:list, epoch, num_ims=4, extra_name=''):
-        _, axes_list = plt.subplots(len(torch_images), num_ims)
-        for i, torch_tensor in enumerate(torch_images):
-            for j in range(num_ims):
-                np_im = torch_tensor[j, :, :, :].detach().cpu().numpy()
-                np_im = np.squeeze(np_im)
-                np_im = np.transpose(np_im, (1, 2, 0))
-                np_im = np.clip(np_im, 0, 1)
-                axes_list[i, j].imshow(np_im)
-            
-        plt.savefig(os.path.join(self.image_dir, f'{epoch}-{extra_name}.png'))
-        self.image_save_counter += 1
-        plt.close()
+        try:
+            _, axes_list = plt.subplots(len(torch_images), num_ims)
+            for i, torch_tensor in enumerate(torch_images):
+                for j in range(num_ims):
+                    np_im = torch_tensor[j, :, :, :].detach().cpu().numpy()
+                    np_im = np.squeeze(np_im)
+                    np_im = np.transpose(np_im, (1, 2, 0))
+                    np_im = np.clip(np_im, 0, 1)
+                    axes_list[i, j].imshow(np_im)
+                
+            plt.savefig(os.path.join(self.image_dir, f'{epoch}-{extra_name}.png'))
+            self.image_save_counter += 1
+            plt.close()
+        except RuntimeError:
+            print(f"fig {os.path.join(self.image_dir, f'{epoch}-{extra_name}.png')} failed to save")
 
     def write_scores(self, scores, epoch):
         scores['epoch'] = epoch

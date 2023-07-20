@@ -59,6 +59,8 @@ def run(runs, AUTOENCODERS, epochs=30, batch_size=32, preload_data=False, datase
                   verbose=False,
                   validate_every=validate_every, 
                   dataset=dataset)
+        else:
+            print('Passing')
 
 
 if __name__ == '__main__':
