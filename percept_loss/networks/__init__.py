@@ -1,6 +1,7 @@
 from .simple_autoencoder import auto_encoder
 from .linear_autoencoder import linear_AE
 from .cifar_autoencoder import Autoencoder_mini, Autoencoder2, Autoencoder_small, Autoencoder_big
+from .image_net_64_autoencoder import noraml_64
 
 
 CIFAR_AUTOENCODERS = {
@@ -13,6 +14,10 @@ CIFAR_AUTOENCODERS = {
 
 }
 # N.B do not include '-' in names as inteferes with saving schema
+
+IMAGENET64_AUTOENCODERS = {
+    'standard': noraml_64,
+}
 
 CLASSIFIER = {
     

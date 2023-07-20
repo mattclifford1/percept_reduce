@@ -7,7 +7,7 @@ import torch
 import torch.optim as optim
 from tqdm import tqdm
 
-from percept_loss.datasets.torch_loaders import get_all_loaders_CIFAR
+from percept_loss.datasets.torch_loaders import get_all_loaders
 from percept_loss.testing.benchmark_encodings import random_GaussianNB_test, test_all_classifiers
 from percept_loss.testing.encoded_dataset import make_encodings
 from percept_loss.utils.savers import train_saver
@@ -79,13 +79,18 @@ class test_and_saver():
             self.running_thread.join()  
     
 
-def train(network, loss, epochs, device, saver, data_percent, pre_loaded_images=None, verbose=False, async_test=True):
+def train(network, loss, epochs, device, saver, data_percent, pre_loaded_images=None, verbose=False, async_test=True, validate_every=2):
     '''
     main training loop
     '''
-    train_dataloader, val_dataloader, test_dataloader, _ = get_all_loaders_CIFAR(train_percept_reduce=data_percent,
+    if validate_every == 1: # know we have a big dataset so decrease validation/test set size
+        props = [0.8, 0.1, 0.1]
+    else:
+        props = [0.4, 0.3, 0.3]
+    train_dataloader, val_dataloader, test_dataloader, _ = get_all_loaders(train_percept_reduce=data_percent,
                                                                            device=device,
-                                                                           pre_loaded_images=pre_loaded_images)
+                                                                           pre_loaded_images=pre_loaded_images,
+                                                                           props=props)
 
     # NETWORK
     net = network
@@ -118,8 +123,8 @@ def train(network, loss, epochs, device, saver, data_percent, pre_loaded_images=
 
             loss.backward()
             optimiser.step()
-
-        tester.run_and_save_async(net, epoch=epoch+1, save_ims=[inputs, outputs], run_async=async_test)
+        if epoch % validate_every == 0:
+            tester.run_and_save_async(net, epoch=epoch+1, save_ims=[inputs, outputs], run_async=async_test)
     tester.wait_to_finish()
 
 
@@ -140,7 +145,7 @@ if __name__ == '__main__':
 
 
     # DATASETS
-    train_dataloader, val_dataloader, test_dataloader, train_total = get_all_loaders_CIFAR(train_percept_reduce=data_percent,
+    train_dataloader, val_dataloader, test_dataloader, train_total = get_all_loaders(train_percept_reduce=data_percent,
                                                                                     device=device)
 
     # TRAINING

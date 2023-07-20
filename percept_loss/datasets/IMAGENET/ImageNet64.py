@@ -111,7 +111,14 @@ class IMAGENET_64_LOADER:
         # get labels
         one_hot, label = self._get_labels(ind)
         return image, one_hot, label
-    
+
+
+def IMAGENET_64_LOADER_VAL(*args, **kwargs):
+    return IMAGENET_64_LOADER(*args, **kwargs, data_dir=DEFAULT_VAL_DATASET)
+
+def IMAGENET_64_LOADER_TRAIN(*args, **kwargs):
+    return IMAGENET_64_LOADER(*args, **kwargs, data_dir=DEFAULT_TRAIN_DATASET)
+
 
 if __name__ == '__main__':
     from tqdm import tqdm
@@ -120,7 +127,7 @@ if __name__ == '__main__':
     # ims = a.get_images_dict()
     # b = IMAGENET_64_LOADER(data_dir=DEFAULT_TRAIN_DATASET, image_dict=ims)
 
-    b = IMAGENET_64_LOADER(data_dir=DEFAULT_TRAIN_DATASET, image_dict={}, cache_data=False)
+    b = IMAGENET_64_LOADER(data_dir=DEFAULT_VAL_DATASET, image_dict={}, cache_data=False)
     # benchmark
     print('preloaded')
     # for e in tqdm(range(10)):
