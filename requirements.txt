@@ -5,3 +5,4 @@ pandas
 torchmetrics[image]
 scikit-learn
 pytorch-msssim
+DISTS-pytorch
