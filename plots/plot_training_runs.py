@@ -63,11 +63,12 @@ for dataset, networks in tqdm(all_results.items()):
                 axs[v_num, plot_num].title.set_text(val_name)
                 axs[v_num, plot_num].legend()
                 axs[v_num, plot_num].set_xlabel('epoch')
-                axs[v_num, plot_num].set_ylabel('accuracy')
-                if 'IMAGENET' in dataset:
-                    axs[v_num, plot_num].set_ylim([0, 0.1])
-                else:
-                    axs[v_num, plot_num].set_ylim([0, 0.8])
+                if val_name != 'val MSE':
+                    axs[v_num, plot_num].set_ylabel('accuracy')
+                    if 'IMAGENET' in dataset:
+                        axs[v_num, plot_num].set_ylim([0, 0.1])
+                    else:
+                        axs[v_num, plot_num].set_ylim([0, 0.8])
 
                 plot_num += 1
                 if plot_num == h_plots:
