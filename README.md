@@ -35,7 +35,7 @@ just a randomly-shaped conv stack?" It does much better than you would hope.
 `LPIPS1` is not a typo: it is LPIPS with its original (incorrect) `normalize=False` input
 handling, kept as a first-class loss so the effect of fixing that bug is *measured* against the
 corrected `LPIPS` under an identical seed rather than assumed. Runs made before the `MSSIM` and
-`LPIPS` fixes are archived in `saves_pre_lossfix/` and must not be mixed with `saves/`.
+`LPIPS` fixes are archived in `saves_legacy/gen1_original/` and must not be mixed with `saves/`.
 
 Short version of the results:
 

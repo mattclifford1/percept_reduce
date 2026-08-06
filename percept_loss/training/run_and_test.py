@@ -9,7 +9,8 @@ import torch.optim as optim
 from tqdm import tqdm
 
 from percept_loss.datasets.torch_loaders import get_all_loaders
-from percept_loss.testing.benchmark_encodings import random_GaussianNB_test, test_all_classifiers
+from percept_loss.testing.benchmark_encodings import (random_GaussianNB_test, test_all_classifiers,
+                                                      PROBE_VERSION)
 from percept_loss.testing.encoded_dataset import make_encodings
 from percept_loss.utils.savers import train_saver
 from percept_loss.losses import LOSS
@@ -142,6 +143,7 @@ def train(network, loss, epochs, device, saver, data_percent, pre_loaded_images=
                               'latent_dim': getattr(net, 'latent_dim', None),
                               'n_parameters': sum(p.numel() for p in net.parameters()),
                               'optimiser': 'Adam',
+                              'probe_version': PROBE_VERSION,
                               'beta': getattr(net, 'beta', None) if is_vae else None,
                               'train_images': len(train_dataloader.dataset)})
 

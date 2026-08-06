@@ -17,6 +17,12 @@ import numpy as np
 
 from .encoded_dataset import make_encodings
 
+# bump when the probe protocol changes in a way that makes numbers incomparable.
+#   1  raw (unstandardised) features, single 67/33 eval split  -- everything in FINDINGS.md §1
+#   2  StandardScaler + logistic-regression probe + three-way fit/select/report split
+# recorded in each run's config.json so a table can tell it is mixing protocols.
+PROBE_VERSION = 2
+
 def random_GaussianNB_test(data_loader, autoencoder, device):
     # quickest to train and test for dev purposes
     X, y = make_encodings(data_loader, autoencoder, device)
@@ -31,9 +37,25 @@ def random_GaussianNB_test(data_loader, autoencoder, device):
 
 def test_all_classifiers(data=None, autoencoder=None, device=None, data_loader=None, verbose=False):
     '''
-    fit cheap probes on frozen encodings. probe train/test is a fixed 67/33 split of the *test*
-    split, so probe sample size is identical in every cell of the grid -- the data_percent axis
-    moves only what the autoencoder saw.
+    fit cheap probes on frozen encodings.
+
+    the encodings of the *test* split are cut three ways, always with the same seed, so probe
+    sample size is identical in every cell of the grid -- the data_percent axis moves only what
+    the autoencoder saw:
+
+        fit     67%    train the probe
+        select  16.5%  choose the epoch  -> reported as '{name} select'
+        report  16.5%  the number to quote -> reported as '{name}'
+
+    the fit split is byte-identical to the old 67/33 split (same call, same seed); only the old
+    33% eval half is subdivided. so '{name}' differs from the historical column solely by being
+    measured on half as many instances.
+
+    **why three ways.** picking the best epoch off the reported column is selection on the test
+    set: with ~16 evals and a noise floor of a few points it inflates every number, and inflates
+    noisy runs most. selecting on 'select' and reporting on 'report' is unbiased early stopping
+    -- the two halves are disjoint. cost is variance: ~3k instances gives a standard error near
+    0.9 percentage points. use `--select early_stop` in summarise_runs/plot_data_efficiency.
 
     'Linear' is logistic regression: the linear probe is the protocol the self-supervised
     literature reports (SimCLR, BYOL, SimSiam), so it is the number that makes results here
@@ -60,7 +82,9 @@ def test_all_classifiers(data=None, autoencoder=None, device=None, data_loader=N
         X, y = make_encodings(data_loader, autoencoder, device)
     else:
         X, y = data
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.33, random_state=42)
+    X_train, X_held, y_train, y_held = train_test_split(X, y, test_size=0.33, random_state=42)
+    X_select, X_test, y_select, y_test = train_test_split(X_held, y_held, test_size=0.5,
+                                                          random_state=42)
 
     # standardise, fit on the probe's train split only.
     # KNN is raw euclidean distance and MLPClassifier(alpha=1) is heavily L2-regularised, so both
@@ -68,7 +92,8 @@ def test_all_classifiers(data=None, autoencoder=None, device=None, data_loader=N
     # not now -- the VAE's mu is deliberately unbounded while the conv nets are bounded to
     # [-1, 1], so without this an architecture comparison partly measures latent scale.
     scaler = StandardScaler().fit(X_train)
-    X_train, X_test = scaler.transform(X_train), scaler.transform(X_test)
+    X_train = scaler.transform(X_train)
+    X_select, X_test = scaler.transform(X_select), scaler.transform(X_test)
 
     # if verbose == True:
     #     print(f'made encoded dataset')
@@ -78,7 +103,7 @@ def test_all_classifiers(data=None, autoencoder=None, device=None, data_loader=N
 
     data = []
     for name, clf in classifiers.items():
-        data.append((name, clf, X_train, X_test, y_train, y_test, verbose))
+        data.append((name, clf, X_train, X_test, X_select, y_train, y_test, y_select, verbose))
 
     # with multiprocessing.Pool() as pool:
     #     mult_results = pool.imap(run_single, data)
@@ -87,16 +112,18 @@ def test_all_classifiers(data=None, autoencoder=None, device=None, data_loader=N
 
     results = {}
     for res in mult_results:
-        name, acc = res
-        results[name] = acc
+        name, acc, acc_select = res
+        results[name] = acc                      # report split -- the number to quote
+        results[f'{name} select'] = acc_select    # epoch-selection split -- never quote this
     return results
 
 def run_single(data):
-    name, clf, X_train, X_test, y_train, y_test, verbose = data
+    name, clf, X_train, X_test, X_select, y_train, y_test, y_select, verbose = data
     clf.fit(X_train, y_train)
 
+    acc_select = accuracy_score(y_select, clf.predict(X_select))
     y_pred = clf.predict(X_test)
     acc = accuracy_score(y_test, y_pred)
     if verbose == True:
         print(f'clf: {name} = {acc*100}')
-    return (name, acc)
+    return (name, acc, acc_select)

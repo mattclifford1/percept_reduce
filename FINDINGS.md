@@ -12,6 +12,10 @@ off the figures. Unless stated, the headline metric is **best-epoch MLP probe ac
 > interest sit. `plots/summarise_runs.py` now defaults to the **final** epoch and prints how much
 > best-epoch selection would have added; `--select best` reproduces the numbers below. Regenerate
 > §1 on the final-epoch basis before quoting any of it.
+>
+> If you want a *stopped* number rather than the last one, the probe now carves a separate
+> selection split: `--select early_stop` picks the epoch on it and reports on a disjoint split,
+> which is unbiased. Runs predating that split (everything in §1) cannot produce it.
 
 ---
 
@@ -96,7 +100,7 @@ Ordered by how much they distort the committed results. Each was verified by run
 not by inspection alone.
 
 > **Status:** B1 and B2 are **fixed** and their runs re-done — see `TODO.md` for what is still
-> open, and `saves_pre_lossfix/` for the runs those two bugs produced. Everything from B3 down
+> open, and `saves_legacy/gen1_original/` for the runs those two bugs produced. Everything from B3 down
 > is outstanding. §1 above describes the *pre-fix* results; it is retained as the record that
 > motivated the fixes, and is superseded for `MSSIM`/`LPIPS` by §4.
 
@@ -270,9 +274,10 @@ almost certainly wrong and cannot currently be rechecked.
 - `get_indicies` documents accepting a list for `total_instances` then computes
   `int(total_instances * prop)`, which raises for a list.
 - Reporting best-epoch accuracy selects over 16 evaluations **on the same eval set**, which
-  inflates every number in §1 by an unmeasured amount. Fix by carving a proper validation set
-  for epoch selection, or by reporting final-epoch only. *(Now surfaced: `summarise_runs.py`
-  defaults to final-epoch and prints the size of the inflation. §1 is still best-epoch.)*
+  inflates every number in §1 by an unmeasured amount. *(Fixed both ways suggested: the probe
+  carves a dedicated selection split — 67% fit / 16.5% select / 16.5% report — so `--select
+  early_stop` is unbiased, and `summarise_runs.py` defaults to final-epoch and prints the size of
+  the inflation. §1 is still best-epoch and predates both.)*
 
 ### B13 — probe features were never standardised, and the MLP probe was under-fit — FIXED
 
@@ -295,16 +300,35 @@ difference is the scaler:
 anything else. The **MLP probe is the headline metric of the whole project**, and on unscaled
 features it was under-fitting to the point of near-chance on an untrained encoder.
 
-Consequences, all still open:
+**The baseline has now been re-measured on `conv_big_z` itself.** Five seeds of the `RANDOM`
+control (`saves/CIFAR_10/conv_big_z/RANDOM/1/`), standardised three-way probe, untrained network:
 
-- The untrained-encoder baseline in §1 (**0.128 ± 0.032**) is an unscaled number. The scaled
-  equivalent is far higher — 0.42 on this architecture — which would put it within reach of
-  `MSE` at 100% data (0.459). *Every* "beats the untrained baseline" claim needs re-checking.
-- The measured ±0.032 noise floor is likewise an unscaled-probe number.
+| probe | mean ± sd over 5 seeds | §1's figure |
+|---|---|---|
+| KNN | 0.2727 ± 0.0100 | 0.268 ± 0.014 |
+| Linear | 0.3852 ± 0.0097 | *(did not exist)* |
+| **MLP** | **0.4112 ± 0.0071** | **0.128 ± 0.032** |
+| NB | 0.2806 ± 0.0206 | 0.287 ± 0.019 |
+
+`KNN` and `NB` reproduce §1 almost exactly, which is the control that makes the `MLP` row
+believable: the split, the network and the seeds are behaving as before, and only the
+scale-sensitive probe moved. **The untrained MLP baseline is 0.411, not 0.128.**
+
+Consequences:
+
+- §1's trained `MLP` numbers were measured on the *old* probe, so they cannot be compared to
+  0.411 — that comparison would be cross-protocol. What can be said is that the bar has moved by
+  ~0.28 and no trained number exists on the current protocol. Several §1 rows (`SSIM` 0.421,
+  `NLPD` 0.398, `MSSIM` 0.380, and `MSE` at 0.459) are close enough to 0.411 that whether they
+  beat an untrained encoder is now an **open question**, not a settled one.
+- The noise floor is **±0.007 on MLP**, not ±0.032. The old figure came from unseeded runs on an
+  unstandardised probe, so it was conflating init variance with probe under-fitting. Per-metric
+  spreads are now in `plots/run_index.py` and drive the shaded band in the figures. Note this is
+  init variance only — it does not include shuffling variance during training.
 - Because under-fitting penalises whichever latents are hardest to fit, the loss *ranking* in §1
   is not safe either — this is not a constant offset.
-- The numbers above are `dcgan` at 1% data, not `conv_big_z`. Re-measure with the `RANDOM`
-  control on `conv_big_z` before quoting anything: that is one cell and takes seconds.
+- The committed runs cannot be re-probed (no checkpoints), so only a re-run puts trained numbers
+  on the current protocol.
 
 ---
 
@@ -312,7 +336,7 @@ Consequences, all still open:
 
 The full CIFAR grid (35 cells) was re-run after fixing B1/B2, now **seeded** — every cell shares
 an identical network init, so cells differing only in loss are a *paired* comparison. Results in
-`saves/CIFAR_10/`; the pre-fix runs are in `saves_pre_lossfix/`.
+`saves_legacy/gen2_lossfix_oldprobe/` (moved there when the probe changed); the pre-fix runs are in `saves_legacy/gen1_original/`.
 
 Headline metric here is **final-epoch** MLP accuracy. Best-epoch (used in §1) is a max over ~16
 evals on the probe's own eval set and is optimistically biased by **+0.026 on average** — and

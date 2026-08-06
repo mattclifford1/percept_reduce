@@ -6,7 +6,7 @@ comparison in FINDINGS.md had to be recomputed ad hoc. this does it once.
 
 usage:
     python plots/summarise_runs.py                    # summarise ./saves
-    python plots/summarise_runs.py saves_pre_lossfix  # or any other saves-shaped dir
+    python plots/summarise_runs.py saves_legacy/gen1_original  # or any saves-shaped dir
     python plots/summarise_runs.py saves --metric Linear
     python plots/summarise_runs.py saves --select best   # the old, biased, headline
 
@@ -14,7 +14,16 @@ usage:
 evals of a metric measured on the probe's own eval set, with a measured +/-0.032 noise floor: it
 is optimistically biased, and biased *more* for noisy runs (small data, DISTS) than stable ones,
 which is precisely where the comparisons of interest are. every number in FINDINGS.md section 1
-is a best-epoch number and should be re-read with that in mind. both columns are printed.
+is a best-epoch number and should be re-read with that in mind. all four columns are printed:
+
+    final       the last eval. the honest default.
+    early_stop  epoch picked on the probe's *select* split, reported on the disjoint report
+                split -- unbiased early stopping. only exists for runs made after the three-way
+                probe split landed.
+    val_sel     epoch picked by lowest val MSE. unbiased, but a weak selector.
+    best        max over all evals. **optimistic** -- an oracle that early-stops using the
+                reported numbers themselves. read `best - final` as a measure of peak-then-
+                degrade instability, not as an achievable score.
 '''
 import argparse
 import os
@@ -48,6 +57,18 @@ def summarise(long_df, metric='MLP'):
         # epoch chosen by val MSE: unbiased w.r.t. the probe, but a weak selector (FINDINGS
         # reports reconstruction quality correlates poorly with probe accuracy)
         row['val_sel'] = g.loc[g['val MSE'].idxmin(), metric]
+        # epoch chosen on the probe's own *select* split and reported on the disjoint report
+        # split. this is the honest early-stopped number -- 'best' is the same idea with the
+        # two splits collapsed into one, which is what makes 'best' biased.
+        sel_col = f'{metric} select'
+        if sel_col in g.columns and not g[sel_col].isna().all():
+            row['early_stop'] = g.loc[g[sel_col].idxmax(), metric]
+            row['early_stop_epoch'] = int(g.loc[g[sel_col].idxmax(), 'epoch'])
+        else:
+            row['early_stop'] = np.nan          # runs predating the three-way split
+        # probe protocol. the select columns only exist under v2, so this works for runs whose
+        # config.json predates probe_version (and for legacy runs, which have no config at all).
+        row['probe'] = 2 if sel_col in g.columns and not g[sel_col].isna().all() else 1
         if 'out std' in g.columns and not g['out std'].isna().all():
             row['min_out_std'] = g['out std'].min()   # ~0 means the run collapsed
         out.append(row)
@@ -58,7 +79,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('save_dir', nargs='?', default='saves')
     ap.add_argument('--metric', default='MLP', help='KNN, Linear, MLP or NB')
-    ap.add_argument('--select', default='final', choices=['final', 'val_sel', 'best'])
+    ap.add_argument('--select', default='final',
+                    choices=['final', 'early_stop', 'val_sel', 'best'])
     args = ap.parse_args()
 
     long_df = load_long(args.save_dir)
@@ -72,6 +94,20 @@ def main():
         pivot = g.pivot(index='loss', columns='datasize', values=args.select)
         pivot = pivot[sorted_sizes(pivot.columns)]
         print(pivot.round(4).to_string())
+
+        # a table that mixes probe protocols is not a table. v1 numbers were measured on
+        # unstandardised features with an under-fit MLP (FINDINGS B13); v2 numbers are not
+        # comparable to them, in either direction.
+        if g['probe'].nunique() > 1:
+            counts = g['probe'].value_counts().sort_index()
+            print('  !! MIXED PROBE PROTOCOLS -- rows above are not comparable to each other.')
+            print('     ' + ', '.join(f'v{v}: {n} runs' for v, n in counts.items())
+                  + '  (v1 = pre-standardisation, FINDINGS B13)')
+            minority = counts.idxmin()
+            if counts.min() <= 8:
+                names = sorted(f'{r.loss}@{r.datasize}' for r in
+                               g[g['probe'] == minority].itertuples())
+                print(f'     v{minority}: ' + ', '.join(names))
 
         # the untrained-network spread is the run-to-run noise floor for this grid
         base = g['epoch0']
@@ -94,8 +130,8 @@ def main():
                       + ', '.join(f'{r.loss}@{r.datasize}' for r in dead.itertuples()))
 
     print(f'\n=== all runs, {args.metric} ===')
-    cols = ['dataset', 'net', 'loss', 'datasize', 'epoch0', 'final', 'val_sel', 'best',
-            'best_epoch', 'val_MSE', 'n_evals', 'layout']
+    cols = ['dataset', 'net', 'loss', 'datasize', 'epoch0', 'final', 'early_stop', 'val_sel',
+            'best', 'best_epoch', 'val_MSE', 'n_evals', 'layout']
     cols = [c for c in cols if c in summary.columns]
     print(summary[cols].round(4).to_string(index=False))
 

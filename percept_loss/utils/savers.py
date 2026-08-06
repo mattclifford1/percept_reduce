@@ -61,6 +61,14 @@ def legacy_dir(base_save, dataset, network, loss, datasize, batch_size):
     return os.path.join(base_save, dataset, network, f'{loss}-{datasize}-BS{batch_size}')
 
 
+# the old layout had nowhere to put a seed or an lr, so a legacy directory can only stand in
+# for the one configuration that generation actually ran. without this, a legacy CSV answered
+# "done" for *every* seed and *every* lr of that cell, and a sweep silently produced no runs at
+# all -- verified: 8/8 sampled (seed, lr) variants returned previously_done=True.
+LEGACY_SEED = 42
+LEGACY_LR = 1e-3
+
+
 class train_saver:
     def __init__(self, epochs, loss, network, batch_size, datasize, dataset='dev',
                  seed=42, lr=1e-3, base_save='saves'):
@@ -93,8 +101,12 @@ class train_saver:
         if os.path.exists(self.done_file):
             return True
         if os.path.exists(self.legacy_csv):
-            # pre-migration run. trust it: it was written before done.json existed
-            return True
+            # pre-migration run. trust it -- but only for the configuration that generation
+            # could actually have produced. see LEGACY_SEED/LEGACY_LR above.
+            if self.seed == LEGACY_SEED and self.lr == LEGACY_LR:
+                return True
+            print(f'legacy run at {self.legacy_dir} ignored for seed={self.seed} lr={self.lr:g} '
+                  f'-- it only covers seed={LEGACY_SEED} lr={LEGACY_LR:g}; running this variant')
         if os.path.exists(self.csv_file):
             # a CSV with no done.json is a crashed run (B10). move it aside and start over
             # rather than skipping this cell forever or merging into half a table.

@@ -29,7 +29,7 @@ Any loss added here must be correct on that range.
 ## Fixed bugs — and why `LPIPS1` exists
 
 Measurements in `FINDINGS.md`. Runs produced *before* these fixes are archived in
-`saves_pre_lossfix/` and must not be compared against current `saves/`.
+`saves_legacy/gen1_original/` and must not be compared against current `saves/`.
 
 ### `MSSIM` was very nearly a no-op — FIXED
 

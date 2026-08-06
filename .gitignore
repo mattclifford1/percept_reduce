@@ -2,8 +2,15 @@
 data
 percept_loss/datasets/CIFAR_10/raw_data
 
-# nets
+# nets -- checkpoints are large and regenerable from a run, never diffable
 *.pth
+*.pt
+
+# per-epoch reconstruction grids: debugging output, not results. ~1875 files / 190MB across
+# saves/ and saves_pre_lossfix/, against ~96KB of CSV -- they were 99.9% of the weight of every
+# results commit. the results record is the CSV + config.json + done.json, and the *figures*
+# record is plots/figs/. any image can be regenerated from a run's checkpoint.
+saves*/**/images/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

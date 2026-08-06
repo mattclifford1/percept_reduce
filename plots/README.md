@@ -52,14 +52,22 @@ python plots/plot_data_efficiency.py --metric Linear    # the SSL-protocol linea
 python plots/plot_data_efficiency.py --select val       # epoch chosen by val MSE
 ```
 
-`--select` is the important flag: `final` (default, honest), `val` (unbiased early stopping, but
-val MSE is a weak proxy for probe accuracy), `best` (**optimistically biased** — see below).
+`--select` is the important flag:
+
+| mode | what it does | use it? |
+|---|---|---|
+| `final` | last eval | default, honest |
+| `early_stop` | epoch picked on the probe's `select` split, reported on the disjoint `report` split | **the right choice when you want a stopped number** |
+| `val` | epoch with lowest val MSE | unbiased but a weak selector |
+| `best` | max over all evals | optimistically biased — see below |
+
+`early_stop` needs the three-way probe split, so it is `NaN` for runs made before that landed.
 
 ## `summarise_runs.py` — cross-run table
 
 ```bash
 python plots/summarise_runs.py                    # ./saves
-python plots/summarise_runs.py saves_pre_lossfix  # any saves-shaped directory
+python plots/summarise_runs.py saves_legacy/gen2_lossfix_oldprobe   # any saves-shaped dir
 python plots/summarise_runs.py saves --metric Linear --select best
 ```
 
@@ -72,6 +80,12 @@ metric measured on the probe's own eval set, against a ±0.032 noise floor: it i
 number and inflates noisy runs more than stable ones. The table prints how much best-epoch
 selection would have added — that quantity is selection bias, not signal. Every number in
 `FINDINGS.md` §1 is currently a best-epoch number; `--select best` reproduces them.
+
+Keep reading `best` for one thing only: **`best − final` measures peak-then-degrade
+instability**, which is a real phenomenon here (`LPIPS` at 1% peaks at epoch 3 and then slides).
+As a performance number it is an oracle that stops using the reported scores themselves; as an
+instability diagnostic it is exactly right. If you want a legitimately stopped score, that is
+what `early_stop` is for.
 
 Still missing: error bars, because there is one seed per cell. Seeds are a run axis now
 (`'seed': [1, 2, 3]` in the runs dict), so this is a matter of compute rather than plumbing —

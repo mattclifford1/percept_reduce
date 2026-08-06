@@ -49,14 +49,15 @@ percept_loss/
   utils/migrate_saves.py     legacy save layout → current layout (dry run by default)
 saves/<dataset>/<net>/<loss>/<size>/bs<bs>_seed<s>_lr<lr>_ep<n>/
   config.json                full run config + git sha — the source of truth for a run
-  training_results.csv       one row per eval epoch: KNN, Linear, MLP, NB, val MSE,
-                             train loss, out std, (KL for VAEs), probe secs, epoch
+  training_results.csv       one row per eval epoch: KNN, Linear, MLP, NB (+ a `<name> select`
+                             column each), val MSE, train loss, out std, (KL for VAEs),
+                             probe secs, epoch
   checkpoint.pt              final weights
   done.json                  written last; this is what "already done" means
   images/<epoch>-.png        2×4 grid: top row inputs, bottom row reconstructions
 saves/<dataset>/<net>/<LOSS>-<size>-BS<bs>/   LEGACY layout — every committed run. still read
                              and still skipped correctly; convert with utils/migrate_saves.py
-saves_pre_lossfix/           runs made BEFORE the MSSIM/LPIPS fixes — never mix with saves/
+saves_legacy/                superseded runs by generation — never mix with saves/ (see its README)
 plots/run_index.py           finds runs in either layout — every reader goes through it
 plots/plot_training_runs.py  per-run training curves into plots/figs/
 plots/plot_data_efficiency.py  accuracy vs data size, one line per loss — the headline figure
@@ -85,6 +86,11 @@ TODO.md                      the open action list (DISTS collapse, data budget, 
 - **`FINDINGS.md` §1 quotes best-epoch accuracy**, which selects on the probe's own eval set over
   ~16 evals. `summarise_runs.py` now defaults to final-epoch and prints how much best-epoch
   would have added. See T1.5.
+- **The probe splits the test-split encodings three ways**: 67% fit, 16.5% *select*, 16.5%
+  *report*. `MLP` is the report split; `MLP select` is for choosing an epoch and must never be
+  quoted. `--select early_stop` in `summarise_runs.py` / `plot_data_efficiency.py` is therefore
+  unbiased early stopping — unlike `best`, which collapses the two splits into one. Runs made
+  before this have no `select` columns and fall back to `NaN` for that mode.
 - **CIFAR results now live in `saves/CIFAR_10/`**, matching the `DATA_LOADER` key. The legacy
   `saves/CIFAR/` path predates the key rename, which meant skip-if-exists never matched and
   the whole CIFAR grid silently re-ran. See T1.0 in `TODO.md`.
@@ -176,7 +182,7 @@ Pipelines must be run from the repo root (`plot_training_runs.py` hardcodes `./s
   than data-size effects, and the data-size/optimisation-budget confound.
 - **Changing a loss config invalidates its saved runs.** If you fix `NLPD`/`DISTS`, move the
   corresponding run directories out of `saves/` or skip-if-exists will hide the fix. Prefer
-  *archiving* to deleting (see `saves_pre_lossfix/`), and consider keeping the old behaviour as
+  *archiving* to deleting (see `saves_legacy/`), and consider keeping the old behaviour as
   a separate named loss the way `LPIPS1` does — it turns "we fixed it" into a measurement.
 - `saves/` and `plots/figs/` are committed to git. Regenerating them produces large diffs —
   that is normal for this repo (see commit `3f775c1 "complete redo of figs"`).

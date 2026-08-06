@@ -30,6 +30,19 @@ def _read_config(run_dir):
     return {}
 
 
+def norm_size(size):
+    '''
+    datasize as a canonical string. legacy runs carry it as the string parsed out of the
+    directory name; config.json carries whatever type was passed to run(). without this, '1' and
+    1 land in two separate columns of the same pivot table.
+    '''
+    try:
+        value = float(size)
+    except (TypeError, ValueError):
+        return str(size)          # 'uniform'
+    return str(int(value)) if value == int(value) else str(value)
+
+
 def _parse_variant(name):
     '''bs32_seed42_lr0.001_ep30 -> dict. fallback only; config.json is the real source'''
     out = {}
@@ -56,6 +69,7 @@ def iter_runs(save_dir):
                 'checkpoint': os.path.exists(os.path.join(run_dir, 'checkpoint.pt'))}
         meta.update(_parse_variant(variant))
         meta.update(_read_config(run_dir))   # config wins where it exists
+        meta['datasize'] = norm_size(meta['datasize'])
         yield meta
 
     for results in sorted(glob(os.path.join(save_dir, '*', '*', '*', RESULTS))):
@@ -65,7 +79,7 @@ def iter_runs(save_dir):
         if cfg.count('-') != 2:
             continue          # not a legacy run directory
         loss, datasize, batch = cfg.split('-')
-        yield {'dataset': dataset, 'net': net, 'loss': loss, 'datasize': datasize,
+        yield {'dataset': dataset, 'net': net, 'loss': loss, 'datasize': norm_size(datasize),
                'batch_size': int(batch[2:]) if batch[2:].isdigit() else batch[2:],
                'seed': None, 'lr': None, 'epochs': None,
                'layout': 'legacy', 'run_dir': run_dir, 'results': results,
@@ -96,6 +110,46 @@ def sorted_sizes(sizes):
     return sorted(sizes, key=lambda s: SIZE_ORDER.index(str(s)) if str(s) in SIZE_ORDER else 99)
 
 
+def probe_version(df, metric):
+    '''
+    which probe protocol produced these rows. the '<metric> select' column only exists under v2,
+    so this works for legacy runs and for configs written before probe_version was recorded.
+      1  raw features, single 67/33 eval split      -- FINDINGS.md section 1
+      2  StandardScaler + 67/16.5/16.5 fit/select/report
+    '''
+    col = f'{metric} select'
+    if col in df.columns and not df[col].isna().all():
+        return 2
+    return 1
+
+
+def caption(df, dataset, metric, extra=''):
+    '''
+    the block of text that makes a figure readable without the repo open. every figure carries
+    it: which probe produced the numbers, what the reference marks mean, and a loud warning if
+    the panel is mixing protocols that are not comparable.
+    '''
+    lines = []
+    v2 = probe_version(df, metric) == 2
+    if v2:
+        lines.append(f'{metric} = accuracy on the probe report split (probe v2: StandardScaler, '
+                     f'67% fit / 16.5% select / 16.5% report of the held-out test split).')
+    else:
+        lines.append(f'{metric} = accuracy on a 33% eval split of the held-out test split '
+                     f'(probe v1: raw features, no standardisation -- see FINDINGS.md B13).')
+    lines.append(f'dashed grey = chance ({chance_level(dataset):.3g}).  '
+                 f'shaded band = untrained encoder +/-{noise_floor(metric)} '
+                 f'(seed-to-seed spread of the RANDOM control, 5 seeds).  '
+                 f'dotted = RANDOM, the untrained-encoder control.')
+    if extra != '':
+        lines.append(extra)
+    return '\n'.join(lines)
+
+
+MIXED_PROTOCOL_WARNING = ('!! this panel mixes probe v1 and v2 runs -- they are NOT comparable '
+                          '(FINDINGS.md B13: standardising moved untrained MLP 0.162 -> 0.421)')
+
+
 def chance_level(dataset):
     '''accuracy of always predicting one class -- the line every probe number must clear'''
     if 'IMAGENET' in dataset:
@@ -103,11 +157,15 @@ def chance_level(dataset):
     return 1/10
 
 
-# measured run-to-run spread of the untrained-encoder probe on CIFAR (FINDINGS B5).
-# until multi-seed runs exist this is the only honest error bar available.
-# two caveats, both meaning this is the best available number rather than the right one:
-#   - it was measured on *unstandardised* probe features, i.e. before FINDINGS B13
-#   - it came from the old unseeded runs. seeding makes every cell's epoch-0 identical, so the
-#     current grid has a measured spread of exactly 0 and cannot estimate its own noise floor
-# re-measure with the multi-seed RANDOM control (TODO T1.4).
-NOISE_FLOOR = 0.032
+# run-to-run spread of the untrained-encoder probe, measured directly: 5 seeds of the RANDOM
+# control on CIFAR-10 / conv_big_z, standardised three-way probe.
+#   saves/CIFAR_10/conv_big_z/RANDOM/1/bs32_seed{1,2,3,4,42}_lr0.001_ep0/
+# this replaces the old ±0.032, which came from unseeded runs on an unstandardised probe and so
+# mixed init variance with probe under-fitting (FINDINGS B13). it is init variance only -- it
+# does not cover run-to-run variation from shuffling during training.
+NOISE_FLOOR_BY_METRIC = {'KNN': 0.010, 'Linear': 0.010, 'MLP': 0.007, 'NB': 0.021}
+NOISE_FLOOR = 0.021    # the widest of them, for a metric-agnostic band
+
+
+def noise_floor(metric):
+    return NOISE_FLOOR_BY_METRIC.get(metric, NOISE_FLOOR)

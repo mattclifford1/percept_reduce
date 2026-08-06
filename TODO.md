@@ -7,7 +7,7 @@ this is the action list. Ordered by how much each blocks a publishable claim.
 fixed, `LPIPS1` was added to preserve the pre-fix LPIPS behaviour as a measurable control, and
 per-run seeding was added so runs differing only in loss share an identical network init. The
 full 35-cell CIFAR grid was re-run and lives in `saves/CIFAR_10/`; all pre-fix runs are
-archived in `saves_pre_lossfix/`. Results in `FINDINGS.md` §3.
+archived in `saves_legacy/gen1_original/`; that re-run is itself now superseded and sits in `saves_legacy/gen2_lossfix_oldprobe/`. Results in `FINDINGS.md` §3.
 
 **Two results from that re-run change the priorities below:**
 
@@ -37,7 +37,7 @@ today silently re-runs the entire grid from scratch instead of resuming, and wri
 second directory. `IMAGENET64_VAL` is unaffected — its key and save path agree.
 
 - [x] The current re-run went to `saves/CIFAR_10/` (correct). The legacy `saves/CIFAR/` grid
-      was archived to `saves_pre_lossfix/`.
+      was archived to `saves_legacy/gen1_original/`.
 - [ ] Add an assertion that the save-path dataset component is a key of `DATA_LOADER`, so a
       future rename fails loudly instead of orphaning a results directory.
 
@@ -132,9 +132,11 @@ floor is larger than the entire SSIM and NLPD data-size trends.
 - [x] Put the seed in the run directory name (it was invisible, so multi-seed runs would have
       overwritten each other). Seeds are a run axis — `'seed': [1, 2, 3]` — and land in
       `.../bs32_seed1_lr0.001_ep30/`, with the seed also in `config.json`.
-- [ ] Re-measure the ±0.032 noise floor. It was measured on **unstandardised** probe features and
-      is not a number about the current probe (B13). The multi-seed `RANDOM` control gives it
-      directly and costs seconds per cell.
+- [x] Re-measure the ±0.032 noise floor. Done via the 5-seed `RANDOM` control on the current
+      probe: **±0.007 MLP**, ±0.010 KNN/Linear, ±0.021 NB. The old figure mixed init variance with
+      probe under-fitting. Per-metric values live in `plots/run_index.py` and drive the shaded
+      band in the figures. Caveat: this is *init* variance only — it does not include the
+      shuffling variance a trained run also carries, so it is a lower bound for trained cells.
 
 ### T1.5 — every §1 number predates probe standardisation (bug B13)
 
@@ -145,9 +147,10 @@ headline metric of the project.
 
 The scaler is now in `test_all_classifiers`, so this affects interpretation rather than code.
 
-- [ ] Re-measure the untrained baseline on `conv_big_z` — one `RANDOM` cell, seconds of compute.
-      §1 quotes 0.128 ± 0.032 and the scaled figure will be far higher, which may put the
-      baseline within reach of the trained `MSE` result (0.459).
+- [x] Re-measure the untrained baseline on `conv_big_z`. Done, 5 seeds: **MLP 0.4112 ± 0.0071**
+      against §1's 0.128 ± 0.032, with `KNN` and `NB` reproducing §1 almost exactly. The bar moved
+      by ~0.28 and `SSIM`/`NLPD`/`MSSIM`/`MSE` are all now close enough to it that beating an
+      untrained encoder is an open question. Table in `FINDINGS.md` B13.
 - [ ] Re-read every "beats the untrained baseline" claim in `FINDINGS.md` against the new number.
 - [ ] Do not assume the loss *ranking* survives. Under-fitting penalises whichever latents are
       hardest to fit, so this is not a constant offset across the grid.
