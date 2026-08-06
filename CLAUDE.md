@@ -30,22 +30,37 @@ percept_loss/
   pipeline_CIFAR.py          entry point — CIFAR-10 grid
   pipeline_IMAGENET64.py     entry point — ImageNet64 *val* split as the whole dataset
   pipeline_IMAGENET64_TRAIN.py  entry point — full ImageNet64 train split (never committed results)
+  pipeline_CIFAR_ARCH.py     entry point — loss axis on the literature backbones + RANDOM control
   training/run_and_test.py   the actual training loop + async eval harness
   training/dev_loop.py       tiny 2-epoch smoke test / async-vs-sync timing benchmark
   training/benchmark.py      STALE — broken imports, do not use
   networks/                  autoencoder definitions (see networks/README.md)
+  networks/{dcgan,resnet,vit}_autoencoder.py, networks/vae.py
+                             literature backbones — DCGAN / CIFAR-ResNet-18 / ViT-Tiny / VAE,
+                             all at a 384-dim latent so probe capacity is held fixed
   losses/                    loss registry: MSE, MAE, SSIM, MSSIM, LPIPS, LPIPS1, DISTS, NLPD
   losses/NLPD_torch/         vendored Laplacian-pyramid NLPD from Alex Hepburn's `expert` repo
   datasets/                  CIFAR-10 + ImageNet64 loaders, split logic, uniform-noise loader
   testing/                   encode-then-probe evaluation (make_encodings + sklearn classifiers)
+  testing/reprobe.py         re-run probes from a saved checkpoint, no retraining
   testing/baseline_performance.py  STALE — broken imports, do not use
-  utils/savers.py            run-directory naming, CSV merge, reconstruction image grids
+  utils/savers.py            run directories, config.json/done.json, CSV merge, checkpoints
   utils/seeding.py           set_seed() — called before net construction so runs are paired
-saves/<dataset>/<net>/<LOSS>-<size>-BS<bs>/
-  training_results.csv       one row per eval epoch: KNN, MLP, NB, val MSE, epoch
+  utils/migrate_saves.py     legacy save layout → current layout (dry run by default)
+saves/<dataset>/<net>/<loss>/<size>/bs<bs>_seed<s>_lr<lr>_ep<n>/
+  config.json                full run config + git sha — the source of truth for a run
+  training_results.csv       one row per eval epoch: KNN, Linear, MLP, NB, val MSE,
+                             train loss, out std, (KL for VAEs), probe secs, epoch
+  checkpoint.pt              final weights
+  done.json                  written last; this is what "already done" means
   images/<epoch>-.png        2×4 grid: top row inputs, bottom row reconstructions
+saves/<dataset>/<net>/<LOSS>-<size>-BS<bs>/   LEGACY layout — every committed run. still read
+                             and still skipped correctly; convert with utils/migrate_saves.py
 saves_pre_lossfix/           runs made BEFORE the MSSIM/LPIPS fixes — never mix with saves/
-plots/plot_training_runs.py  scrapes all saves/ CSVs into plots/figs/
+plots/run_index.py           finds runs in either layout — every reader goes through it
+plots/plot_training_runs.py  per-run training curves into plots/figs/
+plots/plot_data_efficiency.py  accuracy vs data size, one line per loss — the headline figure
+plots/summarise_runs.py      every run in one table (final-epoch headline)
 load_cifar.py                unrelated scratch script (plain CIFAR classifier tutorial)
 FINDINGS.md                  results analysis + confirmed bugs (the evidence lives here)
 TODO.md                      the open action list (DISTS collapse, data budget, ImageNet probe)
@@ -60,8 +75,16 @@ TODO.md                      the open action list (DISTS collapse, data budget, 
   fix is measurable rather than assumed. Do not "fix" it.
 - **Runs are now seeded** — `pipeline.generic.run` calls `set_seed(seed)` after building the
   loss (LPIPS/DISTS draw from the RNG when constructing their backbone) and before building
-  the network, so cells differing only in loss share an identical init. Still one seed per
-  cell; multi-seed sweeps are T1.4 in `TODO.md`.
+  the network, so cells differing only in loss share an identical init. `seed` is a run axis, so
+  multi-seed sweeps (T1.4) are a compute question, not a plumbing one — but every *committed*
+  run is still a single seed.
+- **The probe now standardises its features, and this changed the numbers a lot** (B13). On an
+  untrained `dcgan`, adding `StandardScaler` moved MLP accuracy from 0.162 to 0.421 with `NB`
+  unchanged. Every accuracy in `FINDINGS.md` §1 — including the untrained baseline and the
+  ±0.032 noise floor — predates it. Do not compare a new number to an old one.
+- **`FINDINGS.md` §1 quotes best-epoch accuracy**, which selects on the probe's own eval set over
+  ~16 evals. `summarise_runs.py` now defaults to final-epoch and prints how much best-epoch
+  would have added. See T1.5.
 - **CIFAR results now live in `saves/CIFAR_10/`**, matching the `DATA_LOADER` key. The legacy
   `saves/CIFAR/` path predates the key rename, which meant skip-if-exists never matched and
   the whole CIFAR grid silently re-ran. See T1.0 in `TODO.md`.
@@ -70,18 +93,41 @@ TODO.md                      the open action list (DISTS collapse, data budget, 
 
 ## Key conventions (these are load-bearing)
 
-- **Run identity is encoded in the directory name**: `saves/{dataset}/{network}/{LOSS}-{datasize}-BS{batch_size}/`.
-  `plots/plot_training_runs.py` parses this by splitting on `-`. **Never put a `-` in a loss
-  name or a network name** — both `losses/__init__.py` and `networks/__init__.py` carry this
-  warning. Adding a hyphenated key silently corrupts every plot.
-- **Runs are skipped if `training_results.csv` already exists** (`train_saver.previously_done`).
-  To re-run a config you must delete its directory. A crashed run leaves a partial CSV and will
-  be skipped forever — check this first if a run "does nothing".
+- **A run's identity lives in `config.json`**, not in its path. Each path component is one field
+  (`saves/{dataset}/{net}/{loss}/{datasize}/bs32_seed42_lr0.001_ep30/`) and nothing parses the
+  leaf name. The old layout packed three fields into one directory name and every reader split
+  it on `-`, which is what forced the "no `-` in a loss or network name" rule. **That rule still
+  applies to legacy directories**, and `losses/__init__.py` / `networks/__init__.py` still carry
+  the warning, but new code should read `config.json` via `plots/run_index.py`.
+- **Runs are skipped if `done.json` exists** (`train_saver.previously_done`), or if a *legacy*
+  directory for the same run has a `training_results.csv`. A results CSV with no `done.json` is a
+  crashed run: it gets moved to `training_results.csv.partial-*` and the cell re-runs. To force a
+  re-run, delete the run directory.
+- **Seeds, LR and epoch scaling are run axes.** `'seed': [1, 2, 3]` or `'lr': [...]` in the runs
+  dict works and lands in separate directories. `run(..., epoch_scaling='equal_steps')` scales
+  epochs by `1/data_percent` so every cell gets the same gradient-step budget; the default
+  `'fixed'` is what every committed run used (and is `FINDINGS.md` B4).
+- **Evaluation writes diagnostics, not just accuracies.** `train loss`, `out std` and (for VAEs)
+  `KL` are logged per eval, so a collapsed run is visible in the CSV. Training aborts if the
+  batch-wise output std stays under `collapse_tol` for `collapse_patience` epochs, and
+  `done.json` records `collapsed: true`.
 - **Losses are zero-arg factories** in the `LOSS` dict; they must expose `__call__(x1, x2)`
   returning a scalar to minimise, and a `.to(device)`. Similarity metrics are wrapped by
   `sim_to_loss` (`1 - sim`).
 - **Autoencoders** must expose `encoder_forward`, `decoder_forward`, `forward`, and a
   `latent_dim` attribute (used to preallocate the encoding matrix in `make_encodings`).
+  `encoder_forward` must be **deterministic** — the VAE returns mu, not a sample, or probe
+  accuracy would pick up sampling noise. A net may set `self.kl` and `self.beta`; the trainer
+  adds `beta * kl` to the loss when `kl` is present, and that is the only VAE-aware line in it.
+- **New architectures hold the latent at 384** to match `conv_big_z`. The probe is fit on the
+  flattened latent, so latent size changes probe capacity independently of representation
+  quality — an unconstrained ResNet-18 (512×4×4 = 8192) would win on capacity alone.
+- **`'RANDOM'` in the loss slot is not a loss** — it is the untrained-encoder control, zero
+  gradient steps, one CSV row at epoch 0. It touches no training data, so one cell per network
+  is enough; more `data_percent` values just duplicate it.
+- **Evaluation runs under `net.eval()` + `torch.no_grad()`**, restoring the previous mode
+  (`make_encodings`, `validate`). Every net added since the originals has BatchNorm, and in
+  train mode an image's encoding would depend on its probe batch-mates.
 - **Data are normalised to `[0, 1]`** (`NORMALISE = (0, 1)` in `datasets/torch_loaders.py`) and
   every decoder ends in `Sigmoid`. Any new loss must be correct on that range.
 - Dataset items are `(image, one_hot, numerical_label)`. Training uses `data[0]`; the probe
@@ -105,6 +151,9 @@ Data locations:
 
 ```bash
 python percept_loss/pipeline_CIFAR.py         # ~30 runs, the committed CIFAR grid
+python percept_loss/pipeline_CIFAR_ARCH.py    # architecture sweep + untrained controls
+python percept_loss/testing/reprobe.py saves --all   # re-run probes from checkpoints, no retrain
+python percept_loss/utils/migrate_saves.py saves     # legacy → current layout (dry run)
 python percept_loss/pipeline_IMAGENET64.py    # ImageNet64 val-split grid
 python percept_loss/training/dev_loop.py      # 2-epoch smoke test
 python plots/plot_training_runs.py            # regenerate plots/figs/ from saves/

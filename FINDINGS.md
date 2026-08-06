@@ -5,6 +5,14 @@ Analysis of the 90 committed runs in `saves/`, the bugs that affect them, and wh
 Everything below was recomputed from the CSVs (`~/anaconda3/envs/percept/bin/python`), not read
 off the figures. Unless stated, the headline metric is **best-epoch MLP probe accuracy**.
 
+> **Read the tables in §1 with this caveat.** "Best-epoch" is the maximum over ~16 evaluations of
+> a metric computed on the probe's own eval set, and the measured run-to-run noise floor is
+> ±0.032. That is selection on the test set: it inflates every number, and it inflates *noisy*
+> runs (1% data, `DISTS`) more than stable ones — which is exactly where the comparisons of
+> interest sit. `plots/summarise_runs.py` now defaults to the **final** epoch and prints how much
+> best-epoch selection would have added; `--select best` reproduces the numbers below. Regenerate
+> §1 on the final-epoch basis before quoting any of it.
+
 ---
 
 ## 1. Results
@@ -199,24 +207,44 @@ validation *frequency* silently changes the dataset *split*, and the split is no
 the run directory name. Runs with different `validate_every` are not comparable and will
 collide on the same save path.
 
-### B8 — `batch_size` is never forwarded
+### B8 — `batch_size` is never forwarded — FIXED
 
-`pipeline.generic.run(batch_size=...)` is used only to name the save directory. It is not passed
-to `train()`, which does not pass it to `get_all_loaders()`, which defaults to 32. Every run is
-BS32; the `BS32` in the directory names is true by coincidence.
+`pipeline.generic.run(batch_size=...)` was used only to name the save directory. It was not
+passed to `train()`, which did not pass it to `get_all_loaders()`, which defaults to 32. Every
+committed run is therefore BS32 and the `BS32` in those directory names is true by coincidence.
 
-### B9 — no `torch.no_grad()` / `net.eval()` in evaluation
+`train()` now takes `batch_size` and forwards it, and takes `lr` as well (Adam's default was
+hardcoded, which made the LR sweep T1.1 asks for impossible without editing the trainer). Both
+are recorded in `config.json`. **No committed result changes** — they really were all BS32.
 
-`validate()` and `make_encodings()` both run a full split with autograd live and discard the
-graph. Pure waste and the dominant memory cost of eval. `net.eval()` is never called either —
-harmless today (no BatchNorm/Dropout anywhere) but a silent correctness bug the moment either
-is added.
+### B9 — no `torch.no_grad()` / `net.eval()` in evaluation — FIXED
 
-### B10 — a crashed run is skipped forever
+`validate()` and `make_encodings()` both ran a full split with autograd live and discarded the
+graph. Pure waste and the dominant memory cost of eval. `net.eval()` was never called either —
+harmless while no registered net had BatchNorm or Dropout, and a silent correctness bug the
+moment one did.
 
-`train_saver.previously_done` is just `os.path.exists(csv_file)`. A killed run leaves a partial
-CSV and every subsequent invocation prints `Passing` and moves on. There is no row-count or
+The moment arrived: `dcgan`, `resnet18`, `vit` and `vae` all use BatchNorm. In train mode a
+BatchNorm encoder normalises each batch by its own statistics, so an image's encoding would
+depend on whichever images happened to share its probe batch — the probe would be scored on
+encodings that are not a function of the image alone.
+
+Both functions now save the mode, call `.eval()`, run under `torch.no_grad()`, and restore the
+previous mode. This also makes the VAE decode from mu rather than a sample during validation,
+so val MSE is not sampling noise. **No committed result changes** — every run in `saves/` used a
+norm-free, dropout-free network, where `.eval()` is a no-op.
+
+### B10 — a crashed run is skipped forever — FIXED
+
+`train_saver.previously_done` was just `os.path.exists(csv_file)`. A killed run left a partial
+CSV and every subsequent invocation printed `Passing` and moved on. There was no row-count or
 completeness check. (All 90 committed runs do have the full 16 rows — checked.)
+
+Completion is now a `done.json` written after the last epoch, carrying wall time, row count, and
+whether the run tripped the collapse detector. A results CSV with no `done.json` is treated as a
+crashed attempt: it is moved aside to `training_results.csv.partial-*` and the cell re-runs.
+Legacy directories (which predate `done.json`) are still honoured as complete, so migrating is
+optional and an un-migrated grid is never silently re-run.
 
 ### B11 — stale scripts that no longer import
 
@@ -243,13 +271,124 @@ almost certainly wrong and cannot currently be rechecked.
   `int(total_instances * prop)`, which raises for a list.
 - Reporting best-epoch accuracy selects over 16 evaluations **on the same eval set**, which
   inflates every number in §1 by an unmeasured amount. Fix by carving a proper validation set
-  for epoch selection, or by reporting final-epoch only.
+  for epoch selection, or by reporting final-epoch only. *(Now surfaced: `summarise_runs.py`
+  defaults to final-epoch and prints the size of the inflation. §1 is still best-epoch.)*
+
+### B13 — probe features were never standardised, and the MLP probe was under-fit — FIXED
+
+`test_all_classifiers` fed raw latents straight to `KNeighborsClassifier` (pure Euclidean
+distance) and `MLPClassifier(alpha=1)` (heavy L2). Both are scale-sensitive; the latents are
+`Tanh`-bounded, roughly [-1, 1], and small. A `StandardScaler` fit on the probe's train split is
+now applied before every classifier.
+
+The effect is not marginal. Untrained `dcgan`, same seed, same weights, same split — the only
+difference is the scaler:
+
+| probe | unscaled | standardised |
+|---|---|---|
+| KNN | 0.2703 | 0.2793 |
+| **MLP** | **0.1619** | **0.4207** |
+| NB | 0.2944 | 0.2944 |
+
+`NB` is unchanged (Gaussian NB estimates a per-feature variance, so it is already scale-free) and
+`KNN` barely moves, which is what makes the `MLP` jump attributable to scaling rather than to
+anything else. The **MLP probe is the headline metric of the whole project**, and on unscaled
+features it was under-fitting to the point of near-chance on an untrained encoder.
+
+Consequences, all still open:
+
+- The untrained-encoder baseline in §1 (**0.128 ± 0.032**) is an unscaled number. The scaled
+  equivalent is far higher — 0.42 on this architecture — which would put it within reach of
+  `MSE` at 100% data (0.459). *Every* "beats the untrained baseline" claim needs re-checking.
+- The measured ±0.032 noise floor is likewise an unscaled-probe number.
+- Because under-fitting penalises whichever latents are hardest to fit, the loss *ranking* in §1
+  is not safe either — this is not a constant offset.
+- The numbers above are `dcgan` at 1% data, not `conv_big_z`. Re-measure with the `RANDOM`
+  control on `conv_big_z` before quoting anything: that is one cell and takes seconds.
 
 ---
 
 ## 3. Post-fix results
 
-*(filled in below once the re-run completes — see §4)*
+The full CIFAR grid (35 cells) was re-run after fixing B1/B2, now **seeded** — every cell shares
+an identical network init, so cells differing only in loss are a *paired* comparison. Results in
+`saves/CIFAR_10/`; the pre-fix runs are in `saves_pre_lossfix/`.
+
+Headline metric here is **final-epoch** MLP accuracy. Best-epoch (used in §1) is a max over ~16
+evals on the probe's own eval set and is optimistically biased by **+0.026 on average** — and
+biased more for unstable runs than stable ones, which is exactly where the interesting
+comparisons are. Both are shown.
+
+### B1 fix — `MSSIM` improved a lot, and the noise control moved the right way
+
+| datasize | pre-fix best | fixed best | fixed final | Δ best |
+|---|---|---|---|---|
+| 1% | 0.2965 | 0.4136 | 0.4086 | **+0.117** |
+| 10% | 0.3591 | 0.4150 | 0.4057 | +0.056 |
+| 50% | 0.3773 | 0.4350 | 0.4269 | +0.058 |
+| 100% | 0.3796 | 0.4290 | 0.4190 | +0.049 |
+| uniform noise | 0.3854 | 0.2939 | 0.2148 | **−0.091** |
+
+The real-data gains are well outside the ±0.032 noise floor. **The `uniform` row is the real
+confirmation:** before the fix, MSSIM trained on pure noise (0.385) *beat* MSSIM trained on
+24,000 real images (0.380) — the loss was so weak that real data bought nothing. After the fix,
+real data (0.42) clearly beats noise (0.21). That is the signature of a loss that actually
+constrains the decoder, and it is exactly what a no-op being repaired should look like.
+
+Fixed `MSSIM` now sits alongside `SSIM` (~0.41–0.43) instead of well below it, which is the
+sane result — they are the same metric at different scale counts.
+
+### B2 fix — the correction made LPIPS *worse*, which is why `LPIPS1` was worth keeping
+
+`LPIPS` (`normalize=True`, correct) vs `LPIPS1` (`normalize=False`, the original bug), identical
+init and identical shuffle order — the loss is the only difference:
+
+| datasize | LPIPS final | LPIPS1 final | Δ | LPIPS best | LPIPS1 best | Δ |
+|---|---|---|---|---|---|---|
+| 1% | 0.1439 | 0.1574 | −0.014 | 0.2084 | 0.2103 | −0.002 |
+| 10% | 0.5072 | 0.4988 | +0.008 | 0.5072 | 0.5118 | −0.005 |
+| 50% | 0.5785 | 0.5993 | −0.021 | 0.5843 | 0.5993 | −0.015 |
+| 100% | 0.5736 | **0.6285** | **−0.055** | 0.5796 | 0.6301 | −0.051 |
+| uniform | 0.1007 | 0.1007 | 0.000 | 0.1673 | 0.1673 | 0.000 |
+
+**The uncorrected loss wins at 50% and 100% data**, by more than the noise floor at 100%. The
+fix is still correct — `normalize=False` genuinely feeds VGG half the dynamic range it was
+calibrated on — but "correct" did not mean "better here".
+
+Most likely explanation, and it is a *confound rather than a finding*: halving the input
+contrast shrinks the LPIPS gradient, which at Adam's untuned default LR acts as an implicit
+learning-rate reduction. Given that `DISTS` and `LPIPS` both collapse outright at this LR
+(B3 below), a weaker perceptual gradient being better-conditioned is entirely plausible. So
+this is evidence that **the LR is wrong**, not that the bug was good.
+
+Caveats, both real: n=1 per cell, and the ±0.032 noise floor comes from the *old unseeded*
+runs — in the new grid every cell shares an init, so epoch-0 spread is exactly 0.0000 and the
+grid can no longer estimate its own noise. Resolving this needs the multi-seed sweep (T1.4) and
+an LR sweep (T1.1), in that order.
+
+### B3 confirmed — the `DISTS` collapse moved when only the seed changed
+
+Final-epoch MLP, same grid, same data, different init:
+
+| datasize | unseeded (old) | seeded (new) |
+|---|---|---|
+| 1% | 0.1007 collapsed | 0.1392 |
+| 10% | 0.1007 collapsed | 0.1007 collapsed |
+| 50% | 0.1007 collapsed | **0.5007 worked** |
+| 100% | **0.5202 worked** | 0.1007 collapsed |
+| uniform | 0.1045 | 0.1067 |
+
+The collapse pattern **completely rearranged**: the cell that worked before now fails, and one
+that failed now works. This settles B3 — `DISTS` collapse is initialisation-dependent
+optimisation instability, not a property of the data size. Any `DISTS` row read as a
+data-efficiency curve is reading noise. T1.1 in `TODO.md`.
+
+### What did not change
+
+`MSE`, `SSIM` and `NLPD` reproduce their pre-fix shape closely under the new seed, including the
+§1 headline: hand-designed losses stay flat across data size (`SSIM` 0.413 → 0.407 from 1% to
+100%; `NLPD` 0.403 → 0.341) while `LPIPS` climbs steeply (0.144 → 0.574). That result survives
+the fixes.
 
 ## 4. What to run next
 

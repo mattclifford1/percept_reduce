@@ -35,6 +35,89 @@ The names are misleading — `conv_bigger_z` (96) has a *smaller* latent than `c
 
 `Autoencoder_big` has its fourth conv layer commented out, which is why it stops at 4×4.
 
+### Literature backbones (3×32×32)
+
+Added so the loss axis can be run on architectures that exist in the literature rather than only
+on the hand-rolled stack above. **All five carry the same 384-dim latent** — see "Fixed latent
+budget" below for why that is not a coincidence.
+
+| key | class | file | params | latent | one-line reason |
+|---|---|---|---|---|---|
+| `dcgan` | `DCGAN_AE` | `dcgan_autoencoder.py` | 0.15M | 384 | `conv_big_z` + BatchNorm/LeakyReLU |
+| `resnet18` | `ResNet18_AE` | `resnet_autoencoder.py` | 15.2M | 384 | the frozen-probe standard backbone |
+| `resnet18_thin` | `ResNet18_AE(width=32)` | `resnet_autoencoder.py` | 4.0M | 384 | half width, ~4× cheaper |
+| `vit` | `ViT_AE` | `vit_autoencoder.py` | 4.6M | 384 | transformer comparison, expected to lose |
+| `vae` | `DCGAN_VAE` | `vae.py` | 0.60M | 384 | KL term on the `dcgan` backbone |
+
+Each file's docstring carries the full citation and reasoning. Summary:
+
+**`dcgan`** — Radford, Metz & Chintala (2016), *Unsupervised Representation Learning with Deep
+Convolutional GANs*, ICLR, arXiv:1511.06434. Deliberately the **same channel plan as
+`conv_big_z`** (3→12→24→48→96) plus BatchNorm after every conv and LeakyReLU(0.2) in the
+encoder, so `dcgan` vs `conv_big_z` is a clean ablation of normalisation alone. The reason to
+want it: three `DISTS` cells collapse to a constant output inside one epoch (`FINDINGS.md` B3),
+and a first-epoch collapse at Adam's default LR is precisely the failure mode normalisation
+prevents. If `DISTS` survives on `dcgan`, B3 was optimisation and not the loss — cheaper than
+the LR sweep in `TODO.md` T1.1.
+
+**`resnet18`** — He et al. (2016), *Deep Residual Learning*, CVPR, arXiv:1512.03385, in the
+CIFAR variant (3×3 stem, stride 1, no max-pool). This is the backbone the frozen-probe
+literature reports on: SimCLR (arXiv:2002.05709), BYOL (arXiv:2006.07733) and SimSiam
+(arXiv:2011.10566) all fit CIFAR-10 probes on frozen ResNet-18 features. Running our loss axis
+on it makes the accuracies in `FINDINGS.md` comparable to published self-supervised numbers
+instead of interpretable only against our own grid. At 15M params it is ~80× `conv_big_z`;
+`resnet18_thin` exists for when that is too slow.
+
+**`vit`** — Dosovitskiy et al. (2021), arXiv:2010.11929, at ViT-Tiny width (dim 192, 3 heads,
+per DeiT arXiv:2012.12877), patch 4 → 64 tokens. **Two caveats, both load-bearing:** (1) it is
+*not* MAE (arXiv:2111.06377) — MAE's representation quality comes from the masked-patch
+objective, which cannot be used here because every perceptual loss in the grid is defined on a
+whole image, not a subset of patches; masking would silently change the objective per-loss. (2)
+It is expected to lose on data grounds — ViTs lack the convolutional prior and the 1% cell is
+240 images — so a poor result is evidence about data scale, not about perceptual losses. It is
+registered because it was worth seeing.
+
+**`vae`** — Kingma & Welling (2014), arXiv:1312.6114, with Hou et al. (2017), *Deep Feature
+Consistent VAE*, WACV, arXiv:1610.00291, as the direct precedent: a VAE whose reconstruction
+term is a perceptual feature loss, judged on latent usability. That is this experiment with a
+KL term added. `encoder_forward` returns **mu**, not a sample, so the probe sees a deterministic
+encoding; `forward` samples in train mode and uses mu in eval. `self.kl` is set by every forward
+and `training/run_and_test.py` adds `beta * net.kl` — the only VAE-specific line in the trainer.
+**`beta = 1.0` is a starting point, not a tuned value** (T2.x in `TODO.md`): the KL is stored
+divided by the pixel count so it lands around 0.02 at init, the same scale as the reconstruction
+losses.
+
+Two shared implementation choices:
+
+- **Decoders upsample with `Upsample` + 3×3 conv, never `ConvTranspose2d`.** Transposed convs
+  leave checkerboard artefacts (Odena, Dumoulin & Olah 2016, *Deconvolution and Checkerboard
+  Artifacts*, Distill), and a perceptual loss scores those artefacts directly — with
+  `ConvTranspose2d` the artefact would surface in the results as a loss-axis effect. (The four
+  original `conv_*` nets do use `ConvTranspose2d`; they are left alone so their committed runs
+  stay valid.)
+- **Fixed latent budget of 384.** The probe is fit on the flattened latent, so latent
+  dimensionality changes probe capacity independently of representation quality. A ResNet-18's
+  natural output is 512×4×4 = 8192, which would hand the probe 21× `conv_big_z`'s input and win
+  on capacity alone. Every new encoder ends with a projection to 96×2×2 (conv) or a 384-wide
+  linear (ViT/VAE), so an architecture comparison is not secretly a latent-size comparison.
+
+### `RANDOM` — the untrained-encoder control
+
+Not an architecture: `'RANDOM'` in the **loss** slot of a run dict means *take zero gradient
+steps* (`pipeline/generic.py`). The probe then reads the initialisation itself, and the run
+directory is `RANDOM-{datasize}-BS32` with a single CSV row at epoch 0.
+
+Why it matters more than any of the architectures above: `FINDINGS.md` reports that training on
+pure uniform noise recovers 91% of MSE's full-data accuracy. The competing explanation is that
+the *convolutional architecture* is doing the work and training is nearly irrelevant — random-weight
+conv features are a known-strong baseline (Saxe et al. 2011, *On Random Weights and Unsupervised
+Feature Learning*, ICML) and the deep image prior (Ulyanov et al. 2018, arXiv:1711.10925) is the
+same phenomenon. If `RANDOM` ≈ `uniform`, that finding is an architecture prior, which is both
+cleaner and more defensible than what `FINDINGS.md` currently reaches for. It costs one eval pass.
+
+Because no training data is touched, the result is independent of `data_percent` — run **one
+cell per network**, not one per data size.
+
 ### `IMAGENET64_AUTOENCODERS` (3×64×64) — `image_net_64_autoencoder.py`
 
 | key | class | latent | shape |

@@ -105,7 +105,9 @@ def chance_level(dataset):
 
 # measured run-to-run spread of the untrained-encoder probe on CIFAR (FINDINGS B5).
 # until multi-seed runs exist this is the only honest error bar available.
-# N.B. measured on *unstandardised* probe features, i.e. before FINDINGS B13. it is the best
-# number available but it is not a number about the current probe -- re-measure it with the
-# multi-seed RANDOM control (TODO T1.4).
+# two caveats, both meaning this is the best available number rather than the right one:
+#   - it was measured on *unstandardised* probe features, i.e. before FINDINGS B13
+#   - it came from the old unseeded runs. seeding makes every cell's epoch-0 identical, so the
+#     current grid has a measured spread of exactly 0 and cannot estimate its own noise floor
+# re-measure with the multi-seed RANDOM control (TODO T1.4).
 NOISE_FLOOR = 0.032

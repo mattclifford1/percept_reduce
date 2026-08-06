@@ -36,7 +36,10 @@ colours = {'SSIM': 'blue', 'LPIPS': 'green', 'MSE': 'red', 'MSSIM': 'orange', 'N
 
 
 def select_epoch(run, metric, how):
-    run = run.sort_values('epoch')
+    # runs predating a probe have no column for it -- an all-NaN group, not a zero
+    run = run.sort_values('epoch').dropna(subset=[metric])
+    if len(run) == 0:
+        return np.nan
     if how == 'final':
         return run.iloc[-1][metric]
     if how == 'best':

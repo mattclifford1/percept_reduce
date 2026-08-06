@@ -32,7 +32,10 @@ def summarise(long_df, metric='MLP'):
     out = []
     keys = ['dataset', 'net', 'loss', 'datasize']
     for key, g in long_df.groupby(keys):
-        g = g.sort_values('epoch')
+        # runs predating a probe have no column for it -- an all-NaN group, not a zero
+        g = g.sort_values('epoch').dropna(subset=[metric])
+        if len(g) == 0:
+            continue
         row = dict(zip(keys, key), **{
             'epoch0': g.iloc[0][metric],            # untrained net = the random-encoder baseline
             'final': g.iloc[-1][metric],
