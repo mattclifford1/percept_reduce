@@ -18,7 +18,7 @@ pixel terms if its latent space is more useful.
 
 | axis | values |
 |---|---|
-| loss | `MSE`, `SSIM`, `MSSIM`, `LPIPS`, `DISTS`, `NLPD` (also `MAE`, `SSIM_torchmetrics`) |
+| loss | `MSE`, `SSIM`, `MSSIM`, `LPIPS`, `LPIPS1`, `DISTS`, `NLPD` (also `MAE`, `SSIM_torchmetrics`) |
 | training-set size | `1`, `0.5`, `0.1`, `0.01` (fraction of the train split) and `uniform` |
 | dataset | `CIFAR_10`, `IMAGENET64_VAL`, `IMAGENET64_TRAIN` |
 | autoencoder | 4 CIFAR variants, 2 ImageNet64 variants |
@@ -29,8 +29,15 @@ just a randomly-shaped conv stack?" It does much better than you would hope.
 
 ## Results
 
-See **[FINDINGS.md](FINDINGS.md)** for the full analysis of the 90 committed runs, the confirmed
-bugs that affect them, and proposed follow-up experiments. Short version:
+**[FINDINGS.md](FINDINGS.md)** — full analysis of the runs and the confirmed bugs.
+**[TODO.md](TODO.md)** — the open action list and proposed follow-up experiments.
+
+`LPIPS1` is not a typo: it is LPIPS with its original (incorrect) `normalize=False` input
+handling, kept as a first-class loss so the effect of fixing that bug is *measured* against the
+corrected `LPIPS` under an identical seed rather than assumed. Runs made before the `MSSIM` and
+`LPIPS` fixes are archived in `saves_pre_lossfix/` and must not be mixed with `saves/`.
+
+Short version of the results:
 
 - On CIFAR-10, **LPIPS at full data is the clear winner** (0.60 MLP accuracy vs 0.46 for MSE).
 - **Hand-designed perceptual losses (SSIM, NLPD) are flat across data size** — they hit their

@@ -3,7 +3,7 @@ import percept_loss.pipeline.generic
 # run configs
 runs = {
     # 'data_percent': ['uniform', 0.5, 0.1],
-    'loss': ['SSIM', 'MSE', 'LPIPS', 'MSSIM', 'DISTS', 'NLPD'],
+    'loss': ['SSIM', 'MSE', 'LPIPS', 'LPIPS1', 'MSSIM', 'DISTS', 'NLPD'],
     # 'loss': ['DISTS', 'NLPD'],
     # 'network': ['conv_small_z', 'conv_bigger_z', 'conv_big_z'],
     'network': ['standard'],

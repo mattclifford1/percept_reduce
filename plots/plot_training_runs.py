@@ -1,85 +1,106 @@
+'''
+per-run training curves: one figure per (dataset, network, datasize).
+
+changes from the original version, all of them things the old figures made it easy to misread:
+  - reads both save layouts via run_index (nothing here parses directory names any more)
+  - the metric grid sizes itself, so adding a probe (e.g. 'Linear') no longer indexes out of range
+  - chance level is drawn on every accuracy panel, and y always starts at 0. the old code zoomed
+    ImageNet64 to [0, 0.1], which made near-chance results look like signal
+  - the untrained-encoder baseline +/- the measured run-to-run noise is shaded: any curve inside
+    that band is not distinguishable from an untrained network
+  - RANDOM (the untrained control) is one point at epoch 0, so it is drawn as a horizontal line
+'''
+import argparse
 import os
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from glob import glob
 from tqdm import tqdm
 
-dir_path = os.path.dirname(os.path.realpath(__file__))
-plot_dir = os.path.join(dir_path, 'figs')
-os.makedirs(plot_dir, exist_ok=True)
+from run_index import load_long, chance_level, NOISE_FLOOR
 
-save_dir = os.path.join('.', 'saves', '')
-# save_folders = [f.path for f in os.scandir(save_dir) if f.is_dir()]
-save_folders = glob(os.path.join(save_dir, '*', '*', '*', ''), recursive=True)
+# both paths are relative to the working directory -- identical to the old behaviour when run
+# from the repo root, but pointing the script at another saves tree no longer writes its figures
+# back into the repo's committed plots/figs/
+DEFAULT_SAVE_DIR = os.path.join('.', 'saves', '')
+DEFAULT_PLOT_DIR = os.path.join('plots', 'figs')
+
+# plotted in this order when present. 'probe secs' is bookkeeping, never plotted.
+METRIC_ORDER = ['KNN', 'Linear', 'MLP', 'NB', 'val MSE', 'train loss', 'out std', 'KL']
+ACCURACY_METRICS = {'KNN', 'Linear', 'MLP', 'NB'}
+
+colours = {'SSIM': 'blue', 'LPIPS': 'green', 'MSE': 'red', 'MSSIM': 'orange', 'NLPD': 'yellow',
+           'DISTS': 'pink',
+           'LPIPS1': 'darkgreen',   # LPIPS1 = pre-fix LPIPS, plotted next to the fixed LPIPS
+           'RANDOM': 'black'}       # RANDOM = untrained control, drawn as a horizontal line
 
 
-# extract data from csv files
-num_subplots = 1
-all_results = {}
-for dir in save_folders:
-    results_file = os.path.join(dir, 'training_results.csv')
-    df = pd.read_csv(results_file)
+def plot_metric(ax, panel, metric, dataset):
+    baselines = []
+    for loss, run in panel.groupby('loss'):
+        run = run.sort_values('epoch')
+        values = run[metric].to_numpy()
+        epochs = run['epoch'].to_numpy()
+        if np.all(np.isnan(values)):
+            continue
+        baselines.append(values[0])
+        colour = colours.get(loss, 'grey')
+        if loss == 'RANDOM' or len(epochs) == 1:
+            # a single epoch-0 measurement: a reference level, not a curve
+            ax.axhline(values[0], color=colour, linestyle=':', label=loss)
+        else:
+            ax.plot(epochs, values, label=loss, color=colour)
 
-    # extract info
-    info = dir[len(save_dir):].split(os.sep)
-    train_info = info[2].split('-')
-    dataset = info[0]
-    net = info[1]
-    data_size = train_info[1]
-    # total_epochs = info[2]
-    loss = train_info[0]
-    batch_size = train_info[2][2:]
+    ax.set_title(metric)
+    ax.set_xlabel('epoch')
+    if metric in ACCURACY_METRICS:
+        ax.set_ylabel('accuracy')
+        ax.set_ylim(bottom=0)
+        chance = chance_level(dataset)
+        ax.axhline(chance, color='grey', linestyle='--', linewidth=1)
+        ax.annotate('chance', (0, chance), fontsize=7, color='grey',
+                    va='bottom', ha='left')
+        # anything inside this band is indistinguishable from an untrained encoder
+        if len(baselines):
+            base = float(np.nanmean(baselines))
+            ax.axhspan(base - NOISE_FLOOR, base + NOISE_FLOOR, color='grey', alpha=0.12)
+            ax.annotate(f'untrained +/-{NOISE_FLOOR}', (0, base + NOISE_FLOOR), fontsize=7,
+                        color='grey', va='bottom', ha='left')
+    ax.legend(fontsize=7)
 
-    if dataset not in all_results:
-        all_results[dataset] = {}
-    if net not in all_results[dataset]:
-        all_results[dataset][net] = {}
-    if data_size not in all_results[dataset][net]:
-        all_results[dataset][net][data_size] = {}
-    validations = df.columns.to_list()
-    validations.remove('epoch')
-    num_subplots = max(num_subplots, len(validations))
-    for validation in validations:
-        if validation not in all_results[dataset][net][data_size]:
-            all_results[dataset][net][data_size][validation] = {}
-        epochs = df['epoch'].to_list()
-        scores = df[validation].to_list()
-        all_results[dataset][net][data_size][validation][loss] = {'epoch': epochs, 'values': scores}
 
-# now plot
-colours = {'SSIM': 'blue', 'LPIPS': 'green', 'MSE': 'red', 'MSSIM': 'orange', 'NLPD': 'yellow', 'DISTS': 'pink'}
-h_plots = int(np.ceil(num_subplots/2))
-for dataset, networks in tqdm(all_results.items()):
-    for net, ds, in networks.items():
-        for data_size, v in ds.items():
-            fig, axs = plt.subplots(2, h_plots)
-            fig.suptitle(f'{net} with datasize {data_size}')
-            plot_num = 0
-            v_num = 0
-            for val_name, losses in v.items():
-                for loss, data in losses.items():
-                    axs[v_num, plot_num].plot(data['epoch'], data['values'], label=loss, color=colours[loss])
-                axs[v_num, plot_num].title.set_text(val_name)
-                axs[v_num, plot_num].legend()
-                axs[v_num, plot_num].set_xlabel('epoch')
-                if val_name != 'val MSE':
-                    axs[v_num, plot_num].set_ylabel('accuracy')
-                    if 'IMAGENET' in dataset:
-                        axs[v_num, plot_num].set_ylim([0, 0.1])
-                    else:
-                        axs[v_num, plot_num].set_ylim([0, 0.8])
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument('save_dir', nargs='?', default=DEFAULT_SAVE_DIR)
+    ap.add_argument('--out', default=DEFAULT_PLOT_DIR)
+    args = ap.parse_args()
+    plot_dir = args.out
+    os.makedirs(plot_dir, exist_ok=True)
 
-                plot_num += 1
-                if plot_num == h_plots:
-                    plot_num = 0
-                    v_num += 1 
+    long_df = load_long(args.save_dir)
+    groups = long_df.groupby(['dataset', 'net', 'datasize'])
+    for (dataset, net, data_size), panel in tqdm(groups, total=len(groups)):
+        metrics = [m for m in METRIC_ORDER
+                   if m in panel.columns and not panel[m].isna().all()]
+        n_cols = min(3, len(metrics))
+        n_rows = int(np.ceil(len(metrics)/n_cols))
+        fig, axs = plt.subplots(n_rows, n_cols, squeeze=False)
+        fig.suptitle(f'{dataset} / {net} with datasize {data_size}')
 
-            plot_exact_dir = os.path.join(plot_dir, dataset, net)
-            os.makedirs(plot_exact_dir, exist_ok=True)
-            if data_size != 'uniform':
-                data_size = float(data_size)*100
-            file = os.path.join(plot_exact_dir, f'{data_size}.png')
-            fig.set_size_inches(18.5, 10.5)
-            fig.tight_layout()
-            plt.savefig(file, bbox_inches='tight', dpi=100)
+        flat = axs.flatten()
+        for ax, metric in zip(flat, metrics):
+            plot_metric(ax, panel, metric, dataset)
+        for ax in flat[len(metrics):]:
+            ax.axis('off')
+
+        plot_exact_dir = os.path.join(plot_dir, dataset, net)
+        os.makedirs(plot_exact_dir, exist_ok=True)
+        name = data_size if data_size == 'uniform' else float(data_size)*100
+        fig.set_size_inches(18.5, 10.5)
+        fig.tight_layout()
+        plt.savefig(os.path.join(plot_exact_dir, f'{name}.png'), bbox_inches='tight', dpi=100)
+        plt.close(fig)
+
+
+if __name__ == '__main__':
+    main()

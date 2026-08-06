@@ -34,19 +34,39 @@ percept_loss/
   training/dev_loop.py       tiny 2-epoch smoke test / async-vs-sync timing benchmark
   training/benchmark.py      STALE — broken imports, do not use
   networks/                  autoencoder definitions (see networks/README.md)
-  losses/                    loss registry: MSE, MAE, SSIM, MSSIM, LPIPS, DISTS, NLPD
+  losses/                    loss registry: MSE, MAE, SSIM, MSSIM, LPIPS, LPIPS1, DISTS, NLPD
   losses/NLPD_torch/         vendored Laplacian-pyramid NLPD from Alex Hepburn's `expert` repo
   datasets/                  CIFAR-10 + ImageNet64 loaders, split logic, uniform-noise loader
   testing/                   encode-then-probe evaluation (make_encodings + sklearn classifiers)
   testing/baseline_performance.py  STALE — broken imports, do not use
   utils/savers.py            run-directory naming, CSV merge, reconstruction image grids
+  utils/seeding.py           set_seed() — called before net construction so runs are paired
 saves/<dataset>/<net>/<LOSS>-<size>-BS<bs>/
   training_results.csv       one row per eval epoch: KNN, MLP, NB, val MSE, epoch
   images/<epoch>-.png        2×4 grid: top row inputs, bottom row reconstructions
+saves_pre_lossfix/           runs made BEFORE the MSSIM/LPIPS fixes — never mix with saves/
 plots/plot_training_runs.py  scrapes all saves/ CSVs into plots/figs/
 load_cifar.py                unrelated scratch script (plain CIFAR classifier tutorial)
-FINDINGS.md                  results analysis, confirmed bugs, proposed experiments
+FINDINGS.md                  results analysis + confirmed bugs (the evidence lives here)
+TODO.md                      the open action list (DISTS collapse, data budget, ImageNet probe)
 ```
+
+## Current state of the experiment
+
+- **`MSSIM` and `LPIPS` bugs are fixed** (B1, B2 in `FINDINGS.md`). `MSSIM` is now torchmetrics
+  MS-SSIM with `betas=(0.5, 0.5)` — the only scale count that works at 32 px. `LPIPS` now
+  passes `normalize=True`.
+- **`LPIPS1` is a deliberately unfixed LPIPS** (`normalize=False`), kept so the effect of the
+  fix is measurable rather than assumed. Do not "fix" it.
+- **Runs are now seeded** — `pipeline.generic.run` calls `set_seed(seed)` after building the
+  loss (LPIPS/DISTS draw from the RNG when constructing their backbone) and before building
+  the network, so cells differing only in loss share an identical init. Still one seed per
+  cell; multi-seed sweeps are T1.4 in `TODO.md`.
+- **CIFAR results now live in `saves/CIFAR_10/`**, matching the `DATA_LOADER` key. The legacy
+  `saves/CIFAR/` path predates the key rename, which meant skip-if-exists never matched and
+  the whole CIFAR grid silently re-ran. See T1.0 in `TODO.md`.
+- Everything else in `FINDINGS.md` is still open — most importantly the `DISTS` collapse, the
+  data-size/optimisation-budget confound, and the near-chance ImageNet64 probe.
 
 ## Key conventions (these are load-bearing)
 
@@ -101,12 +121,14 @@ Pipelines must be run from the repo root (`plot_training_runs.py` hardcodes `./s
   Network init and shuffling are unseeded, so runs are not reproducible and there is exactly
   one seed per grid cell. The measured noise floor is ~±0.03 absolute MLP accuracy on CIFAR
   (see `FINDINGS.md`), which is large relative to several of the effects being claimed.
-- **`FINDINGS.md` lists confirmed bugs that affect the committed results.** Read it before
-  trusting any number in `saves/`. In particular `MSSIM` is very nearly a no-op as configured,
-  `NLPD` uses 1 of 6 pyramid levels, `LPIPS` is fed the wrong input range, and three `DISTS`
-  runs are collapsed optimisation failures rather than data-size effects.
-- **Changing a loss config invalidates its saved runs.** If you fix `MSSIM`/`NLPD`/`LPIPS`,
-  delete the corresponding `saves/` directories or the skip-if-exists logic will hide the fix.
+- **`FINDINGS.md` lists confirmed bugs; `TODO.md` tracks what is still open.** Read them before
+  trusting any number in `saves/`. `MSSIM` and `LPIPS` are fixed; still open are `NLPD` using
+  1 of 6 pyramid levels, three `DISTS` runs that are collapsed optimisation failures rather
+  than data-size effects, and the data-size/optimisation-budget confound.
+- **Changing a loss config invalidates its saved runs.** If you fix `NLPD`/`DISTS`, move the
+  corresponding run directories out of `saves/` or skip-if-exists will hide the fix. Prefer
+  *archiving* to deleting (see `saves_pre_lossfix/`), and consider keeping the old behaviour as
+  a separate named loss the way `LPIPS1` does — it turns "we fixed it" into a measurement.
 - `saves/` and `plots/figs/` are committed to git. Regenerating them produces large diffs —
   that is normal for this repo (see commit `3f775c1 "complete redo of figs"`).
 - `percept_loss/datasets/CIFAR_10/__init__,py` has a **comma instead of a dot**. It works today

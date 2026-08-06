@@ -4,7 +4,7 @@ import percept_loss.pipeline.generic
 runs = {
     'data_percent': [1, 0.5, 0.1, 0.01, 'uniform'],
     # 'data_percent': ['uniform', 0.5, 0.1],
-    'loss': ['SSIM', 'MSE', 'LPIPS', 'MSSIM', 'DISTS', 'NLPD'],
+    'loss': ['SSIM', 'MSE', 'LPIPS', 'LPIPS1', 'MSSIM', 'DISTS', 'NLPD'],
     # 'loss': ['DISTS', 'NLPD'],
     # 'network': ['standard'],
     'network': ['bigger_z'],
