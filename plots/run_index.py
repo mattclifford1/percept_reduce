@@ -70,6 +70,10 @@ def iter_runs(save_dir):
         meta.update(_parse_variant(variant))
         meta.update(_read_config(run_dir))   # config wins where it exists
         meta['datasize'] = norm_size(meta['datasize'])
+        # runs predating the budget grid have no epoch_scaling in their config, and every one of
+        # them was 'fixed' (it was the only behaviour). without a value here they would group with
+        # the equal_steps cells, which is the one comparison this axis exists to keep apart.
+        meta.setdefault('epoch_scaling', 'fixed')
         yield meta
 
     for results in sorted(glob(os.path.join(save_dir, '*', '*', '*', RESULTS))):
@@ -81,7 +85,7 @@ def iter_runs(save_dir):
         loss, datasize, batch = cfg.split('-')
         yield {'dataset': dataset, 'net': net, 'loss': loss, 'datasize': norm_size(datasize),
                'batch_size': int(batch[2:]) if batch[2:].isdigit() else batch[2:],
-               'seed': None, 'lr': None, 'epochs': None,
+               'seed': None, 'lr': None, 'epochs': None, 'epoch_scaling': 'fixed',
                'layout': 'legacy', 'run_dir': run_dir, 'results': results,
                'done': True, 'checkpoint': False}
 
@@ -93,8 +97,13 @@ def load_long(save_dir, require_done=False):
         if require_done and meta['done'] == False:
             continue
         df = pd.read_csv(meta['results']).sort_values('epoch')
+        # epochs and epoch_scaling are load-bearing: with three seeds and two optimisation
+        # budgets in one tree, ('dataset','net','loss','datasize') is no longer unique per run.
+        # a reader that groups on it alone concatenates six runs and then takes .iloc[-1] as
+        # "final", which silently returns whichever run ran longest -- the 3000-epoch
+        # equal_steps cell. always reduce per run_dir first, then aggregate across seeds.
         for key in ('dataset', 'net', 'loss', 'datasize', 'batch_size', 'seed', 'lr',
-                    'layout', 'run_dir'):
+                    'epochs', 'epoch_scaling', 'layout', 'run_dir'):
             df[key] = meta.get(key)
         frames.append(df)
     if len(frames) == 0:
@@ -104,6 +113,19 @@ def load_long(save_dir, require_done=False):
 
 # datasizes in a sensible order rather than alphabetical
 SIZE_ORDER = ['0.01', '0.1', '0.5', '1', 'uniform']
+
+# at data_percent=1 the 1/data_percent epoch scaling is exactly 1, and 'uniform' has no
+# data_percent to scale by, so under either budget these are the *same run* -- the pipelines
+# share a single directory for them (same config, same epoch count). whichever grid ran first
+# stamped its own epoch_scaling into config.json, so they have to be pulled into both views
+# explicitly, or the equal-steps curve loses the full-data anchor the whole comparison is
+# measured against.
+SHARED_SIZES = ('1', 'uniform')
+
+
+def budget_view(df, scaling):
+    '''rows for one optimisation budget, including the cells that both budgets share'''
+    return df[(df['epoch_scaling'] == scaling) | (df['datasize'].isin(SHARED_SIZES))]
 
 
 def sorted_sizes(sizes):

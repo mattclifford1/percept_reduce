@@ -1,0 +1,27 @@
+{
+  "dataset": "CIFAR_10",
+  "network": "vae",
+  "loss": "DISTS",
+  "datasize": 1,
+  "batch_size": 32,
+  "seed": 2,
+  "lr": 0.001,
+  "epochs": 30,
+  "git_sha": "fe6ed9a-dirty",
+  "torch": "2.0.1",
+  "python": "3.10.12",
+  "started": "2026-08-07 03:34:46",
+  "data_percent": 1,
+  "split_props": [
+    0.4,
+    0.3,
+    0.3
+  ],
+  "validate_every": 2,
+  "latent_dim": 384,
+  "n_parameters": 596415,
+  "optimiser": "Adam",
+  "probe_version": 2,
+  "beta": 1.0,
+  "train_images": 24000
+}

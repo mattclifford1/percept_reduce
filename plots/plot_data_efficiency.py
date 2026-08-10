@@ -24,11 +24,15 @@ epoch selection matters more than it looks (see --select):
 import argparse
 import os
 
+import matplotlib
+matplotlib.use('Agg')    # these scripts only savefig -- never show(). without this matplotlib
+                         # tries to open a display and blocks on the socket indefinitely if one
+                         # is advertised but not answering (seen: 10 min, 1s of CPU, stuck in poll)
 import matplotlib.pyplot as plt
 import numpy as np
 
 from run_index import (load_long, sorted_sizes, chance_level, noise_floor, caption,
-                       probe_version, MIXED_PROTOCOL_WARNING)
+                       probe_version, MIXED_PROTOCOL_WARNING, budget_view, SHARED_SIZES)
 
 SELECT_TEXT = {
     'final': 'value at the final epoch',
@@ -42,7 +46,17 @@ SELECT_TEXT = {
 DEFAULT_PLOT_DIR = os.path.join('plots', 'figs')
 
 colours = {'SSIM': 'blue', 'LPIPS': 'green', 'MSE': 'red', 'MSSIM': 'orange', 'NLPD': 'yellow',
-           'DISTS': 'pink', 'LPIPS1': 'darkgreen', 'RANDOM': 'black'}
+           'DISTS': 'pink', 'LPIPS1': 'purple', 'RANDOM': 'black'}
+# LPIPS1 was 'darkgreen' next to LPIPS's 'green' -- the two curves that most need telling apart
+# (the fix vs the deliberately unfixed version) were the two hardest to distinguish
+
+# one figure per optimisation budget -- they are different experiments. the fixed-budget grid
+# confounds data size with gradient steps (FINDINGS B4); the equal-steps grid holds steps fixed
+# and varies only the number of distinct images. the difference is the result (TODO T1.2).
+BUDGET_TEXT = {'fixed': 'fixed budget: 30 epochs over each cell\'s own training set '
+                        '(data size and gradient steps are confounded)',
+               'equal_steps': 'equal optimisation budget: epochs scaled by 1/data_percent '
+                              '(only the number of distinct images varies)'}
 
 
 def select_epoch(run, metric, how):
@@ -79,24 +93,39 @@ def main():
     if args.metric not in long_df.columns:
         raise SystemExit(f'no {args.metric} column -- older runs predate it')
 
-    for (dataset, net), g in long_df.groupby(['dataset', 'net']):
+    panels = []
+    for (dataset, net), whole in long_df.groupby(['dataset', 'net']):
+        for scaling in sorted(whole['epoch_scaling'].dropna().unique()):
+            panels.append((dataset, net, scaling, budget_view(whole, scaling)))
+
+    for dataset, net, scaling, g in panels:
         sizes = sorted_sizes(g['datasize'].unique())
         x = np.arange(len(sizes))
         fig, ax = plt.subplots()
 
         untrained = []
+        n_seeds = set()
         for loss, runs in g.groupby('loss'):
-            ys = []
+            ys, errs = [], []
             for size in sizes:
                 cell = runs[runs['datasize'] == size]
-                ys.append(select_epoch(cell, args.metric, args.select) if len(cell) else np.nan)
-                if len(cell):
-                    untrained.append(cell.sort_values('epoch').iloc[0][args.metric])
+                # one value per run, then mean +/- sd over seeds. reducing the concatenated
+                # cell directly would take .iloc[-1] across every seed at once and report the
+                # longest-running one as if it were the cell.
+                vals = [select_epoch(r, args.metric, args.select)
+                        for _, r in cell.groupby('run_dir')]
+                vals = [v for v in vals if not np.isnan(v)]
+                ys.append(np.mean(vals) if vals else np.nan)
+                errs.append(np.std(vals, ddof=1) if len(vals) > 1 else 0.0)
+                n_seeds.add(len(vals))
+                for _, r in cell.groupby('run_dir'):
+                    untrained.append(r.sort_values('epoch').iloc[0][args.metric])
             if loss == 'RANDOM':
                 # no training data involved, so it is a level not a curve
                 ax.axhline(np.nanmean(ys), color='black', linestyle=':', label='RANDOM (untrained)')
                 continue
-            ax.plot(x, ys, marker='o', label=loss, color=colours.get(loss, 'grey'))
+            ax.errorbar(x, ys, yerr=errs, marker='o', capsize=3, label=loss,
+                        color=colours.get(loss, 'grey'))
 
         chance = chance_level(dataset)
         ax.axhline(chance, color='grey', linestyle='--', linewidth=1)
@@ -115,12 +144,20 @@ def main():
         ax.set_ylabel(f'{args.metric} probe accuracy on frozen encodings')
         ax.set_ylim(bottom=0)
         ax.set_title(f'{dataset} / {net}: does a perceptual loss buy data efficiency?\n'
-                     f'{args.metric} probe, {SELECT_TEXT[args.select]}', fontsize=11)
+                     f'{args.metric} probe, {SELECT_TEXT[args.select]}\n'
+                     f'{BUDGET_TEXT.get(scaling, scaling)}', fontsize=11)
         ax.legend(fontsize=8, loc='best')
 
         # the figure has to stand on its own -- it is the one most likely to be read alone
         note = ('a line that is flat in x reached its ceiling on the smallest training set; '
-                'a steep line needs data. differences smaller than the shaded band are noise.')
+                'a steep line needs data. differences smaller than the shaded band are noise. '
+                'error bars are +/-1 sd over seeds'
+                + (f' (n={min(n_seeds - {0})}-{max(n_seeds)} per point).' if n_seeds - {0}
+                   else '.'))
+        shared = [s for s in sizes if s in SHARED_SIZES]
+        if shared and long_df['epoch_scaling'].nunique() > 1:
+            note += (f' the {", ".join(shared)} points are one run shared by both budgets -- '
+                     'the scaling factor there is 1, so the two grids cannot differ.')
         text = caption(g, dataset, args.metric, extra=note)
         if g.groupby('run_dir').apply(lambda r: probe_version(r, args.metric)).nunique() > 1:
             text = MIXED_PROTOCOL_WARNING + '\n' + text
@@ -128,7 +165,8 @@ def main():
 
         out_dir = os.path.join(plot_dir, dataset, net)
         os.makedirs(out_dir, exist_ok=True)
-        out = os.path.join(out_dir, f'data_efficiency-{args.metric}-{args.select}.png')
+        out = os.path.join(out_dir,
+                           f'data_efficiency-{args.metric}-{args.select}-{scaling}.png')
         fig.set_size_inches(9, 6.6)
         fig.tight_layout(rect=[0, 0.14, 1, 1])   # leave room for the caption block
         fig.savefig(out, bbox_inches='tight', dpi=120)

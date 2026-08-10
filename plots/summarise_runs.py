@@ -33,14 +33,28 @@ import numpy as np
 import pandas as pd
 
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
-from run_index import load_long, sorted_sizes
+from run_index import load_long, sorted_sizes, budget_view
+
+# the two optimisation budgets are different experiments and must never share a table: the
+# fixed-budget grid confounds data size with gradient steps (FINDINGS B4), the equal-steps grid
+# holds steps constant. the *difference* between them is the data-efficiency result (TODO T1.2).
+BUDGET_TEXT = {'fixed': 'fixed budget: 30 epochs over each cell\'s own data',
+               'equal_steps': 'equal steps: epochs scaled by 1/data_percent'}
 
 
 def summarise(long_df, metric='MLP'):
-    '''one row per run: untrained baseline, final, val-selected and best epoch'''
+    '''
+    one row per run: untrained baseline, final, val-selected and best epoch
+
+    grouped by `run_dir`, which is the only key guaranteed unique per run. grouping on
+    (dataset, net, loss, datasize) was correct while there was one seed and one budget, and
+    became silently wrong the moment the grid had three seeds and two budgets: it concatenated
+    six runs and took .iloc[-1] as 'final', which returns whichever ran longest -- always the
+    3000-epoch equal_steps cell -- while 'best' became a maximum over six runs.
+    '''
     out = []
-    keys = ['dataset', 'net', 'loss', 'datasize']
-    for key, g in long_df.groupby(keys):
+    keys = ['dataset', 'net', 'loss', 'datasize', 'epoch_scaling', 'seed', 'run_dir']
+    for key, g in long_df.groupby(keys, dropna=False):
         # runs predating a probe have no column for it -- an all-NaN group, not a zero
         g = g.sort_values('epoch').dropna(subset=[metric])
         if len(g) == 0:
@@ -89,11 +103,30 @@ def main():
     summary = summarise(long_df, args.metric)
 
     pd.set_option('display.width', 200)
-    for (dataset, net), g in summary.groupby(['dataset', 'net']):
-        print(f'\n=== {dataset} / {net} — {args.select} {args.metric} accuracy ===')
-        pivot = g.pivot(index='loss', columns='datasize', values=args.select)
+    panels = []
+    for (dataset, net), whole in summary.groupby(['dataset', 'net']):
+        for scaling in sorted(whole['epoch_scaling'].dropna().unique()):
+            panels.append((dataset, net, scaling, budget_view(whole, scaling)))
+
+    for dataset, net, scaling, g in panels:
+        budget = BUDGET_TEXT.get(scaling, scaling)
+        print(f'\n=== {dataset} / {net} — {args.select} {args.metric} accuracy [{budget}] ===')
+        # mean +/- sd over seeds. one cell is now several runs, and collapsing them by pivoting
+        # would just pick an arbitrary one; the spread across seeds is also the only honest
+        # error bar this experiment has.
+        agg = (g.groupby(['loss', 'datasize'], dropna=False)[args.select]
+                .agg(['mean', 'std', 'count']).reset_index())
+        cells = agg.apply(lambda r: f'{r["mean"]:.4f}' if r['count'] < 2
+                          else f'{r["mean"]:.4f}+/-{r["std"]:.4f}', axis=1)
+        agg = agg.assign(cell=cells)
+        pivot = agg.pivot(index='loss', columns='datasize', values='cell')
         pivot = pivot[sorted_sizes(pivot.columns)]
-        print(pivot.round(4).to_string())
+        print(pivot.fillna('-').to_string())
+        seeds = sorted({s for s in g['seed'] if pd.notna(s)})
+        n = agg['count']
+        print(f'  seeds: {seeds if seeds else "unrecorded (legacy)"}; '
+              f'{n.min()}-{n.max()} runs per cell'
+              + ('  (+/- is sd over seeds)' if n.max() > 1 else ''))
 
         # a table that mixes probe protocols is not a table. v1 numbers were measured on
         # unstandardised features with an under-fit MLP (FINDINGS B13); v2 numbers are not
@@ -130,8 +163,8 @@ def main():
                       + ', '.join(f'{r.loss}@{r.datasize}' for r in dead.itertuples()))
 
     print(f'\n=== all runs, {args.metric} ===')
-    cols = ['dataset', 'net', 'loss', 'datasize', 'epoch0', 'final', 'early_stop', 'val_sel',
-            'best', 'best_epoch', 'val_MSE', 'n_evals', 'layout']
+    cols = ['dataset', 'net', 'loss', 'datasize', 'epoch_scaling', 'seed', 'epoch0', 'final',
+            'early_stop', 'val_sel', 'best', 'best_epoch', 'val_MSE', 'n_evals', 'layout']
     cols = [c for c in cols if c in summary.columns]
     print(summary[cols].round(4).to_string(index=False))
 

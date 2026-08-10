@@ -12,6 +12,8 @@ changes from the original version, all of them things the old figures made it ea
 '''
 import argparse
 import os
+import matplotlib
+matplotlib.use('Agg')    # savefig only, never show() -- see plot_data_efficiency.py
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd

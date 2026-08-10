@@ -1,0 +1,27 @@
+{
+  "dataset": "CIFAR_10",
+  "network": "conv_big_z",
+  "loss": "LPIPS1",
+  "datasize": 0.01,
+  "batch_size": 32,
+  "seed": 2,
+  "lr": 0.001,
+  "epochs": 30,
+  "git_sha": "fe6ed9a-dirty",
+  "torch": "2.0.1",
+  "python": "3.10.12",
+  "started": "2026-08-07 01:01:28",
+  "data_percent": 0.01,
+  "split_props": [
+    0.4,
+    0.3,
+    0.3
+  ],
+  "validate_every": 2,
+  "latent_dim": 384,
+  "n_parameters": 194955,
+  "optimiser": "Adam",
+  "probe_version": 2,
+  "beta": null,
+  "train_images": 240
+}
