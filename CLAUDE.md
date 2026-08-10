@@ -60,8 +60,9 @@ saves/<dataset>/<net>/<LOSS>-<size>-BS<bs>/   LEGACY layout — every committed 
 saves_legacy/                superseded runs by generation — never mix with saves/ (see its README)
 plots/run_index.py           finds runs in either layout — every reader goes through it
 plots/plot_training_runs.py  per-run training curves into plots/figs/
-plots/plot_data_efficiency.py  accuracy vs data size, one line per loss — the headline figure
-plots/summarise_runs.py      every run in one table (final-epoch headline)
+plots/plot_data_efficiency.py  accuracy vs data size, one line per loss — the headline figure.
+                             one figure per optimisation budget, mean ± sd over seeds
+plots/summarise_runs.py      every run in one table (final-epoch headline), one table per budget
 load_cifar.py                unrelated scratch script (plain CIFAR classifier tutorial)
 FINDINGS.md                  results analysis + confirmed bugs (the evidence lives here)
 TODO.md                      the open action list (DISTS collapse, data budget, ImageNet probe)
@@ -105,14 +106,27 @@ TODO.md                      the open action list (DISTS collapse, data budget, 
   it on `-`, which is what forced the "no `-` in a loss or network name" rule. **That rule still
   applies to legacy directories**, and `losses/__init__.py` / `networks/__init__.py` still carry
   the warning, but new code should read `config.json` via `plots/run_index.py`.
-- **Runs are skipped if `done.json` exists** (`train_saver.previously_done`), or if a *legacy*
-  directory for the same run has a `training_results.csv`. A results CSV with no `done.json` is a
-  crashed run: it gets moved to `training_results.csv.partial-*` and the cell re-runs. To force a
-  re-run, delete the run directory.
+- **Runs are skipped if `done.json` exists** (`train_saver.previously_done`). A results CSV with
+  no `done.json` is a crashed run: it gets moved to `training_results.csv.partial-*` and the cell
+  re-runs. To force a re-run, delete the run directory.
+- **A legacy directory only counts as done if it could have produced the same numbers** — same
+  seed (42), same LR (1e-3), *and* the same probe protocol, detected from the CSV header (B14).
+  It has no `config.json`, so none of that is recorded and all three have to be inferred. When a
+  legacy run is rejected the reason is printed, and `run()` reports skips by reason and warns if a
+  partition trained nothing. That warning exists because 35 cells once vanished silently.
 - **Seeds, LR and epoch scaling are run axes.** `'seed': [1, 2, 3]` or `'lr': [...]` in the runs
   dict works and lands in separate directories. `run(..., epoch_scaling='equal_steps')` scales
   epochs by `1/data_percent` so every cell gets the same gradient-step budget; the default
   `'fixed'` is what every committed run used (and is `FINDINGS.md` B4).
+- **`run_dir` is the only key unique per run — reduce on it before aggregating.** With three
+  seeds and two budgets in one tree, `(dataset, net, loss, datasize)` matches six runs. Grouping
+  on it and taking `.iloc[-1]` as "final" returns whichever ran longest (the 3000-epoch
+  equal-steps cell) under a fixed-budget heading, and turns `best` into a max over six runs —
+  that is B16, and it was silent. Reduce per `run_dir`, then aggregate seeds explicitly
+  (mean ± sd). **Never put both budgets in one table or figure**: their difference *is* the
+  data-efficiency result (T1.2), so averaging them destroys the measurement. `run_index.
+  budget_view` gives one budget's rows plus the cells both share (`data_percent=1`, `uniform`,
+  where the scaling factor is 1 and the two grids are by definition the same run).
 - **Evaluation writes diagnostics, not just accuracies.** `train loss`, `out std` and (for VAEs)
   `KL` are logged per eval, so a collapsed run is visible in the CSV. Training aborts if the
   batch-wise output std stays under `collapse_tol` for `collapse_patience` epochs, and

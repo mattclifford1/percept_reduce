@@ -22,7 +22,8 @@ def get_all_dict_permutations(dict_):
     return dict_permutations
 
 def run(runs, AUTOENCODERS, epochs=30, batch_size=32, preload_data=False, dataset='CIFAR_10',
-        validate_every=2, seed=42, lr=1e-3, epoch_scaling='fixed'):
+        validate_every=2, n_validations=None, props=None, seed=42, lr=1e-3,
+        epoch_scaling='fixed'):
     '''
     cartesian product over the run grid.
 
@@ -38,6 +39,14 @@ def run(runs, AUTOENCODERS, epochs=30, batch_size=32, preload_data=False, datase
       'equal_steps' epochs are scaled by 1/data_percent so every cell takes roughly the same
                     number of gradient steps. this is what the dead `scaled_epochs` line in the
                     old code was trying to do. 'uniform' is unscaled -- it has no data_percent.
+
+    with 'equal_steps', pass `n_validations` too: it fixes the number of evaluations per run
+    instead of the interval between them. 1% data becomes 3000 epochs, and at validate_every=2
+    that is 1500 probes -- the probe is 95% of wall time here, so the cadence has to scale with
+    the epoch count or the eval cost swamps the experiment.
+
+    pass `props` explicitly alongside it. the default split is derived from validate_every
+    (FINDINGS B7), so a computed cadence can move the split by arithmetic accident.
     '''
     # fixed things for all runs
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -50,6 +59,8 @@ def run(runs, AUTOENCODERS, epochs=30, batch_size=32, preload_data=False, datase
 
     # all variations
     all_runs = get_all_dict_permutations(runs)
+    skipped = {'done.json': 0, 'legacy': 0}
+    trained = 0
 
     # # run
     for run in tqdm(all_runs, desc='All Runs'):
@@ -96,11 +107,28 @@ def run(runs, AUTOENCODERS, epochs=30, batch_size=32, preload_data=False, datase
                   pre_loaded_images=pre_loaded_images, 
                   verbose=False,
                   validate_every=validate_every,
+                  n_validations=n_validations,
+                  props=props,
+                  extra_config={'epoch_scaling': epoch_scaling},
                   dataset=dataset,
                   batch_size=batch_size,
                   lr=run_lr)
+            trained += 1
         else:
-            print('Passing')
+            skipped[saver.skip_reason] = skipped.get(saver.skip_reason, 0) + 1
+            print(f'Passing ({saver.skip_reason}): {saver.save_dir}')
+
+    # a partition that skips everything is a real failure mode, not a fast success -- it is how
+    # 35 seed-42 cells went missing from the big re-run without anyone noticing. say so loudly.
+    print(f'\n{trained} cells trained, {sum(skipped.values())} skipped '
+          f'({skipped["done.json"]} already done, {skipped["legacy"]} matched a legacy run, '
+          f'{skipped.get("locked", 0)} held by another process)')
+    if trained == 0 and len(all_runs) > 0:
+        print('WARNING: every cell in this partition was skipped -- nothing was run. if you '
+              'expected work, check whether legacy directories are standing in for it.')
+    if skipped['legacy'] > 0:
+        print(f'NOTE: {skipped["legacy"]} cells were satisfied by legacy (pre-migration) '
+              f'directories rather than by runs of the current code.')
 
 
 if __name__ == '__main__':

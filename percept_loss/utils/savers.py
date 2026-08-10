@@ -69,6 +69,37 @@ LEGACY_SEED = 42
 LEGACY_LR = 1e-3
 
 
+def legacy_matches_current_probe(csv_file):
+    '''
+    can this legacy CSV stand in for a run of the *current* probe?
+
+    a legacy directory has no config.json, so it cannot say which probe protocol produced it --
+    and a run is only "already done" if the numbers in it are the numbers we would produce now.
+    the probe rewrite (FINDINGS B13) is exactly such a change: standardising the features moved
+    untrained MLP accuracy from 0.162 to 0.421, and the three-way split added a '<metric> select'
+    column per classifier. the header is therefore a direct, dependency-free test of protocol:
+    v2 runs have select columns, v1 runs do not.
+
+    this is the fix for a real incident, not a hypothetical. every conv_big_z seed-42 cell of the
+    big re-run was skipped -- seed and lr matched a legacy directory, so 35 cells reported "done"
+    on the strength of probe-v1 numbers that the re-run existed to replace. the whole seed-42
+    column was missing before anyone noticed.
+    '''
+    try:
+        with open(csv_file) as f:
+            return ' select' in f.readline()
+    except OSError:
+        return False
+
+
+def _process_alive(pid):
+    try:
+        os.kill(pid, 0)          # signal 0 tests existence without touching the process
+        return True
+    except (OSError, TypeError):
+        return False
+
+
 class train_saver:
     def __init__(self, epochs, loss, network, batch_size, datasize, dataset='dev',
                  seed=42, lr=1e-3, base_save='saves'):
@@ -92,21 +123,39 @@ class train_saver:
 
         self.legacy_dir = legacy_dir(base_save, dataset, network, loss, datasize, batch_size)
         self.legacy_csv = os.path.join(self.legacy_dir, 'training_results.csv')
+        self.lock_file = os.path.join(self.save_dir, 'running.lock')
 
         self.previously_done = self._check_done()
+        if self.previously_done == False and self._claim() == False:
+            # another process is already on this cell
+            self.previously_done = True
+            self.skip_reason = 'locked'
         self.image_save_counter = 0
         self.start_time = time.time()
 
     def _check_done(self):
+        # why a run is (not) being skipped, so a caller can report it. a silent skip is how the
+        # seed-42 incident stayed invisible: 35 cells "passed" and nothing said why.
+        self.skip_reason = None
         if os.path.exists(self.done_file):
+            self.skip_reason = 'done.json'
             return True
         if os.path.exists(self.legacy_csv):
-            # pre-migration run. trust it -- but only for the configuration that generation
-            # could actually have produced. see LEGACY_SEED/LEGACY_LR above.
-            if self.seed == LEGACY_SEED and self.lr == LEGACY_LR:
+            # pre-migration run. trust it only for a configuration that generation could
+            # actually have produced -- same seed, same lr, *and* the same probe protocol.
+            wrong_variant = self.seed != LEGACY_SEED or self.lr != LEGACY_LR
+            old_probe = legacy_matches_current_probe(self.legacy_csv) == False
+            if wrong_variant == False and old_probe == False:
+                self.skip_reason = 'legacy'
                 return True
-            print(f'legacy run at {self.legacy_dir} ignored for seed={self.seed} lr={self.lr:g} '
-                  f'-- it only covers seed={LEGACY_SEED} lr={LEGACY_LR:g}; running this variant')
+            why = []
+            if wrong_variant:
+                why.append(f'it only covers seed={LEGACY_SEED} lr={LEGACY_LR:g}')
+            if old_probe:
+                why.append('it predates the current probe (FINDINGS B13), so its numbers are '
+                           'not the numbers this run would produce')
+            print(f'legacy run at {self.legacy_dir} ignored for seed={self.seed} '
+                  f'lr={self.lr:g} -- ' + '; '.join(why) + '. running this cell')
         if os.path.exists(self.csv_file):
             # a CSV with no done.json is a crashed run (B10). move it aside and start over
             # rather than skipping this cell forever or merging into half a table.
@@ -114,6 +163,48 @@ class train_saver:
             os.rename(self.csv_file, partial)
             print(f'incomplete run found, moved {self.csv_file} -> {partial}, re-running')
         return False
+
+    def _claim(self):
+        '''
+        take exclusive ownership of this cell, or report that someone else has it.
+
+        `previously_done` is a check-then-act, so two processes pointed at the same cell both
+        decide to run it and then both write training_results.csv. the merge in
+        save_and_merge_df_as_csv is an outer join, so the file ends up with duplicated epochs
+        rather than an error. **this happened**: running the fixed-budget and equal-steps grids
+        at the same time, five seed-42 cells collide (equal_steps at data_percent=1 resolves to
+        the same 30 epochs, hence the same directory), and all five CSVs came out with duplicate
+        rows -- one had 30 rows where 16 were expected.
+
+        O_CREAT|O_EXCL is atomic, so exactly one process wins. the lock records the pid, and a
+        lock whose process is gone is reclaimed -- otherwise a crashed run would wedge the cell
+        forever, which is the B10 trap in a new costume.
+        '''
+        self._ensure_dirs()
+        try:
+            fd = os.open(self.lock_file, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            try:
+                with open(self.lock_file) as f:
+                    holder = json.load(f)
+            except (OSError, ValueError):
+                holder = {}
+            if _process_alive(holder.get('pid')):
+                print(f'{self.save_dir} is being run by pid {holder.get("pid")} -- skipping')
+                return False
+            print(f'stale lock at {self.lock_file} (pid {holder.get("pid")} is gone) -- reclaiming')
+            os.unlink(self.lock_file)
+            fd = os.open(self.lock_file, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        with os.fdopen(fd, 'w') as f:
+            json.dump({'pid': os.getpid(), 'host': platform.node(),
+                       'started': time.strftime('%Y-%m-%d %H:%M:%S')}, f)
+        return True
+
+    def _release(self):
+        try:
+            os.unlink(self.lock_file)
+        except OSError:
+            pass
 
     def _ensure_dirs(self):
         # lazily -- a skipped run should not leave an empty directory behind
@@ -169,6 +260,7 @@ class train_saver:
             info.update(extra)
         with open(self.done_file, 'w') as f:
             json.dump(info, f, indent=2, default=str)
+        self._release()      # done.json is the record now; the lock has served its purpose
         return info
 
     def save_checkpoint(self, net):

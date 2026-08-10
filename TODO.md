@@ -9,12 +9,27 @@ per-run seeding was added so runs differing only in loss share an identical netw
 full 35-cell CIFAR grid was re-run and lives in `saves/CIFAR_10/`; all pre-fix runs are
 archived in `saves_legacy/gen1_original/`; that re-run is itself now superseded and sits in `saves_legacy/gen2_lossfix_oldprobe/`. Results in `FINDINGS.md` §3.
 
+Also done since this list was written, and no longer repeated below: checkpoints
+(`checkpoint.pt`) + `testing/reprobe.py`, the per-run `config.json` sidecar, `done.json` as the
+completion marker, `batch_size` actually forwarded to the loaders, `eval()`/`no_grad()` around
+`validate` and `make_encodings`, a linear (logistic-regression) probe, a separate
+fit/select/report probe split, and the collapse detector.
+
+**A gen3 re-run is currently in flight** (`percept_loss/pipeline_CIFAR_BIG.py`, `SEEDS = [42, 1, 2]`)
+— controls + headline grid + four backbones, all on probe v2 with checkpoints. As of this pass
+`saves/CIFAR_10/` holds 34 finished runs (5-seed `conv_big_z` `RANDOM`, the full `dcgan`
+MSE/LPIPS/DISTS grid, partial `conv_big_z` SSIM) with several cells still running. Several items
+below are already partly answered by it; where they are, the evidence is quoted inline.
+
 **Two results from that re-run change the priorities below:**
 
 1. **The `LPIPS` fix made LPIPS *worse*** — the uncorrected `LPIPS1` beats it by 0.055 at 100%
    data under an identical init. The most likely reason is that halving the input contrast
    shrank the gradient and acted as an implicit LR reduction. That makes **T1.1 (LR) a
    prerequisite for interpreting the loss axis at all**, not just a `DISTS` fix. Promote it.
+   *(Update: partly overtaken. The `dcgan` runs show the conditioning problem is fixed by
+   BatchNorm rather than by tuning the LR — see T1.1. An LR sweep is still the way to confirm the
+   mechanism on `conv_big_z`, but it is no longer blocking the loss axis.)*
 2. **The `DISTS` collapse pattern completely rearranged when only the seed changed** (the cell
    that worked now fails; one that failed now works). B3 is settled as initialisation-dependent
    optimisation instability. This also means **T1.4 (multi-seed) is not optional polish** — with
@@ -62,17 +77,29 @@ So the loss comparison currently confounds "which loss gives better representati
 "which loss happens to be well-conditioned at 1e-3". An LR sweep is a prerequisite for the
 headline table, not a side quest.
 
-- [ ] Re-run `DISTS` with a lower LR (try 1e-4) and/or a short warmup. **Unblocked**: `lr` is now
-      an argument to `train()` and a run axis (`'lr': [1e-3, 1e-4]` in the runs dict), landing in
-      separate directories. Try `dcgan` at the same time — it is `conv_big_z` plus BatchNorm, and
-      a first-epoch collapse is what normalisation prevents.
+**Largely answered by the `dcgan` runs — and the answer was normalisation, not LR.** All five
+`DISTS`×data-size cells on `dcgan` (`saves/CIFAR_10/dcgan/DISTS/*`, seed 42, same 1e-3 LR)
+trained to 30 epochs with no collapse, `out std` ~0.23 throughout, and a clean monotone
+data-size trend: MLP **0.444 / 0.503 / 0.538 / 0.543** at 1 / 10 / 50 / 100%, `uniform` 0.442.
+`LPIPS` at 1% likewise shows no epoch-3-peak-then-degrade — it rises to 0.455 and ends at its
+best. So B3 was an optimisation failure that BatchNorm fixes, and the LR sweep is no longer a
+prerequisite for the loss axis on a normalised backbone.
+
+- [x] Try `dcgan` — it is `conv_big_z` plus BatchNorm, and a first-epoch collapse is what
+      normalisation prevents. Done, and it prevents it (numbers above).
+- [ ] Still open for `conv_big_z` itself: re-run `DISTS`/`LPIPS` there with a lower LR (try 1e-4)
+      and/or a short warmup, to confirm the mechanism rather than just routing around it.
+      **Unblocked**: `lr` is an argument to `train()` and a run axis (`'lr': [1e-3, 1e-4]` in the
+      runs dict), landing in separate directories. No `lr0.0001` run exists yet.
 - [x] Add a collapse detector: if the loss is flat and the output variance across a batch
       collapses, abort and mark the run rather than writing 30 epochs of a dead network. Done —
       `train()` aborts when the batch-wise output std stays below `collapse_tol` (1e-4) for
       `collapse_patience` (3) epochs, `done.json` records `collapsed: true`, and `out std` is a
       CSV column so a collapse is visible without opening the images.
-- [ ] Consider whether the same fragility affects `LPIPS` at 1% — it also peaks at epoch 3
+- [x] Consider whether the same fragility affects `LPIPS` at 1% — it also peaks at epoch 3
       (0.222) and then degrades to 0.195, which looks like the beginning of the same failure.
+      Same answer: on `dcgan` the degradation is gone (1%: 0.439 @ ep1 → 0.455 final, best at the
+      end). Same fragility, same fix. Still unverified on `conv_big_z`.
 
 ### T1.2 — data size is confounded with optimisation budget (bug B4)
 
@@ -100,26 +127,38 @@ Every "less data" result is also a "~100× less optimisation" result.
       gone. **Note the pathology the old comment warns about is real** — `equal_steps` at 1% is
       3000 epochs over 240 images, so treat it as a second condition to compare against, not as
       the corrected version.
-- [ ] Run the headline CIFAR grid under both budgets. **The difference between the two grids is
+- [x] Run the headline CIFAR grid under both budgets. **The difference between the two grids is
       the data-efficiency result** — this is the single most valuable experiment on this list.
+      Both grids are now in `saves/CIFAR_10/conv_big_z/` at three seeds: 35 fixed-budget cells
+      and 21 equal-steps cells per seed (`0.01`/`0.1`/`0.5` only — at `1` and `uniform` the
+      scaling factor is 1, so those cells are shared, see B15/B16).
+- [ ] **Read the comparison.** `summarise_runs.py` / `plot_data_efficiency.py` now print one
+      table and figure per budget, so this is a reading exercise, not a compute one. Note the
+      readers pooled the two budgets until B16 was fixed — any comparison made before that fix
+      needs redoing.
 - [x] Record the budget mode in the run directory name or a config sidecar. The scaled epoch
       count is in the directory (`_ep30` vs `_ep3000`) so the two budgets cannot collide, and
       `config.json` records the resolved value.
 
 ### T1.3 — the ImageNet64 probe is measuring nothing
 
-Both ImageNet64 grids (60 runs) evaluate **1,000 classes on a 4,950-instance probe eval set** —
-~5 examples per class, probe fit on ~10 per class. Chance is 0.001; only 20 of 60 runs exceed
-0.01 and the best across all 60 is 0.0218.
+The ImageNet64 grids evaluate **1,000 classes on a 4,950-instance probe eval set** — ~5 examples
+per class, probe fit on ~10 per class. Chance is 0.001; only 20 of 60 runs exceed 0.01 and the
+best across all 60 is 0.0218. (Run counts have moved since: `saves/IMAGENET64_VAL/` now holds
+**40** runs, all still in the legacy directory layout, with 60 more archived under
+`saves_legacy/`. The measurement problem is unchanged.)
 
-The figures look like they contain signal only because `plot_training_runs.py` hardcodes
+The figures used to look like they contained signal because `plot_training_runs.py` hardcoded
 `ylim=[0, 0.1]` for ImageNet, an 8× zoom relative to the CIFAR panels.
 
 - [ ] Pick a fix, cheapest first: (a) subsample to 50–100 ImageNet classes; (b) use
       `IMAGENET64_TRAIN` so the probe gets a real number of examples per class; (c) report
       top-5 and class-balanced accuracy.
-- [ ] Until one lands, treat the 60 committed ImageNet64 runs as null. Do not cite them.
-- [ ] Fix the hardcoded y-limits so the panels are not visually misleading.
+- [ ] Until one lands, treat every committed ImageNet64 run as null — the 40 in
+      `saves/IMAGENET64_VAL/` and the 60 archived. Do not cite them.
+- [x] Fix the hardcoded y-limits so the panels are not visually misleading. Done — both
+      `plot_training_runs.py` and `plot_data_efficiency.py` now only set `ylim(bottom=0)` and let
+      the top autoscale; no dataset-specific limit anywhere in `plots/`.
 
 ### T1.4 — seeds and error bars (bug B5)
 
@@ -128,7 +167,9 @@ epoch 0 across nominally identical random-init networks: CIFAR MLP **0.128 ± 0.
 floor is larger than the entire SSIM and NLPD data-size trends.
 
 - [ ] Sweep ≥5 seeds per cell for the headline CIFAR loss × data-size grid; report mean ± sd.
-      This is now only a compute question.
+      **In progress** — `pipeline_CIFAR_BIG.py` is running `SEEDS = [42, 1, 2]`, i.e. n=3, not the
+      ≥5 asked for here. n=3 gives a mean but a poor sd; decide whether to extend the seed list
+      before quoting error bars. Only the `RANDOM` controls have reached 5 seeds (`conv_big_z`).
 - [x] Put the seed in the run directory name (it was invisible, so multi-seed runs would have
       overwritten each other). Seeds are a run axis — `'seed': [1, 2, 3]` — and land in
       `.../bs32_seed1_lr0.001_ep30/`, with the seed also in `config.json`.
@@ -154,9 +195,12 @@ The scaler is now in `test_all_classifiers`, so this affects interpretation rath
 - [ ] Re-read every "beats the untrained baseline" claim in `FINDINGS.md` against the new number.
 - [ ] Do not assume the loss *ranking* survives. Under-fitting penalises whichever latents are
       hardest to fit, so this is not a constant offset across the grid.
-- [ ] The committed runs cannot be re-probed — they have no checkpoints. Only re-running gives
+- [x] The committed runs cannot be re-probed — they have no checkpoints. Only re-running gives
       standardised numbers for them; runs from here on can be re-probed with
-      `percept_loss/testing/reprobe.py`.
+      `percept_loss/testing/reprobe.py`. Resolved by decision rather than by fix: the gen2 grid
+      was archived to `saves_legacy/gen2_lossfix_oldprobe/` and is being re-run from scratch on
+      probe v2 with checkpoints (`pipeline_CIFAR_BIG.py`). `config.json` records `probe_version`,
+      so a table can tell it is mixing protocols.
 
 ---
 
@@ -168,10 +212,13 @@ Every headline claim needs these on the same axes and none is currently plotted:
 
 - [x] untrained random encoder — now runnable as a first-class condition: put `'RANDOM'` in the
       loss slot and `pipeline/generic.py` takes zero gradient steps, writing
-      `RANDOM-{datasize}-BS32/` with one row at epoch 0. Verified to reproduce the epoch-0 row of
-      a trained run of the same network exactly (same seed, same init). Still needs plotting as a
-      horizontal reference line rather than a one-point series;
-- [ ] raw pixels, no encoder — requires fixing `testing/baseline_performance.py` (see T3.3);
+      `.../RANDOM/{datasize}/bs32_seed{s}_lr0.001_ep0/` with one row at epoch 0. Verified to
+      reproduce the epoch-0 row of a trained run of the same network exactly (same seed, same
+      init). Now also plotted correctly — `plot_data_efficiency.py` draws it as a dotted
+      `axhline` at the mean, not a one-point series;
+- [ ] raw pixels, no encoder — requires fixing `testing/baseline_performance.py` (see **B11** in
+      Engineering; the old cross-reference to T3.3 was wrong). It still fails at import on
+      `get_all_loaders_CIFAR`;
 - [ ] random projection to the same `latent_dim` — ~2 lines of sklearn.
 
 Motivation: `MSE`+`uniform` (trained only on noise) reaches **0.418** vs **0.459** for MSE on all
@@ -203,9 +250,11 @@ current comparison.
       in `percept_loss/networks/README.md`. Run them with `percept_loss/pipeline_CIFAR_ARCH.py`
       (kept separate from `pipeline_CIFAR.py` so the committed grid is untouched and the two can
       run concurrently).
-- [ ] `dcgan` is `conv_big_z` + BatchNorm/LeakyReLU and nothing else, so `dcgan` vs `conv_big_z`
+- [x] `dcgan` is `conv_big_z` + BatchNorm/LeakyReLU and nothing else, so `dcgan` vs `conv_big_z`
       answers T1.1 as a side effect: if `DISTS` no longer collapses there, B3 was optimisation
-      rather than the loss, and no LR sweep is needed.
+      rather than the loss, and no LR sweep is needed. **It does not collapse** — all five
+      `DISTS` cells trained cleanly. See T1.1 for the numbers. Note this also makes `dcgan` the
+      better default backbone for the headline grid than `conv_big_z`.
 - [ ] `resnet18` is the point of the exercise — it is the backbone SimCLR/BYOL/SimSiam report
       CIFAR-10 probe accuracy on, so it is what makes our numbers comparable to published ones.
       15M params; use `resnet18_thin` (4M) if the 35-cell wall time is too long.
@@ -219,8 +268,9 @@ whether the latent is informative or posterior-collapsed, and it interacts with 
 (the perceptual losses do not all return the same magnitude).
 
 - [ ] Sweep `beta` over ~3 decades on one loss before reading anything into the VAE rows.
-- [ ] Log the KL term separately in the CSV — a collapsed posterior and a working one are
-      indistinguishable from probe accuracy alone.
+- [x] Log the KL term separately in the CSV — a collapsed posterior and a working one are
+      indistinguishable from probe accuracy alone. Done: `train()` accumulates `net.kl` per epoch
+      and writes a `KL` column for any net that has the attribute; `beta` is in `config.json`.
 
 ### T2.4 — longer training for the learned perceptual losses
 
@@ -228,7 +278,9 @@ whether the latent is informative or posterior-collapsed, and it interacts with 
 when the run ends — while `SSIM`/`NLPD`/`MSE` peak early. The 30-epoch budget probably
 understates the learned losses.
 
-- [ ] Run the top configs to 100+ epochs.
+- [ ] Run the top configs to 100+ epochs. Weaker on `dcgan` than it was on `conv_big_z`: at 100%
+      data `LPIPS` plateaus by epoch ~19 (0.606) and ends at 0.598, and `DISTS` is flat from ~23.
+      Check this again on the gen3 `conv_big_z` runs before spending the compute.
 
 ### T2.5 — `NLPD` uses 1 of its 6 pyramid levels (bug B6)
 
@@ -237,7 +289,8 @@ sigmas. Verified maximum usable `k`: **3 at 32px, 5 at 64px**; `k=6` fails at bo
 reference implementation uses `k=6`.
 
 - [ ] Sweep `k` ∈ {1, 2, 3} on CIFAR. Register as separate loss names (`NLPD`, `NLPD2`,
-      `NLPD3`) so the runs are distinguishable on disk — **no `-` in the names**.
+      `NLPD3`) so the runs are distinguishable on disk — **no `-` in the names**. Re-verified
+      untouched: `losses/__init__.py` registers only `'NLPD'`, still `NLPD(nlpd_k=1)`.
 - [ ] Note NLPD currently peaks at epoch 1–3 then *degrades* at 50%/100% data (0.398 @ ep1 →
       0.339 final at 100%). Its "flat across data size" result is partly "its best number is
       roughly its epoch-1 number". Re-check this with a working `k`.
@@ -258,7 +311,10 @@ KNN and MLP already disagree sharply: **15 of 30 CIFAR runs finish with worse KN
 the untrained network**, while MLP improves. "Representation quality" is probe-dependent and
 that disagreement is itself a result.
 
-- [ ] Add a linear probe (the standard self-supervised metric) and k-NN at several k.
+- [x] Add a linear probe (the standard self-supervised metric). Done — `Linear` is
+      `LogisticRegression(max_iter=2000)` in `test_all_classifiers`, reported as its own column
+      (and `Linear select`). This is the column that makes results comparable to SimCLR/BYOL.
+- [ ] k-NN at several k — still a single `KNeighborsClassifier()` at the sklearn default k=5.
 - [ ] Report the probe's own train/test gap, not just accuracy.
 
 ### T3.3 — encoder transfer
@@ -277,32 +333,42 @@ Only val MSE is logged, so a run trained with SSIM is never evaluated by SSIM.
 
 ## Engineering
 
-- [ ] **B9** — wrap `validate()` and `make_encodings()` in `torch.no_grad()`, and add
-      `net.eval()` / `net.train()`. Both currently build an autograd graph over a whole split
-      and discard it. Harmless today (no BatchNorm/Dropout) but a silent correctness bug the
-      moment either is added.
-- [ ] **B5** — save network weights. A run is currently unreproducible *and* unrecoverable.
-- [ ] **B7/B8** — write a JSON config sidecar per run (epochs, LR, seed, split props, batch
-      size, budget mode). Two things are currently invisible and dangerous:
-      split proportions are selected by `validate_every` (`training/run_and_test.py:86`), and
-      `batch_size` is accepted by `pipeline.run()` but never forwarded, so every run is BS32
-      regardless of what the pipeline says.
-- [ ] **B10** — `previously_done` checks only that `training_results.csv` *exists*. A crashed
-      run leaves a partial CSV and is skipped forever. Check row count against expected evals.
+- [x] **B9** — wrap `validate()` and `make_encodings()` in `torch.no_grad()`, and add
+      `net.eval()` / `net.train()`. Done, and no longer hypothetical: every backbone added since
+      (`dcgan`, `resnet18`, `vit`, `vae`) has BatchNorm. Both restore the previous mode.
+- [x] **B5** — save network weights. Done — `saver.save_checkpoint()` writes `checkpoint.pt`
+      (state dict + network name + latent dim), and `testing/reprobe.py` consumes it.
+- [x] **B7/B8** — write a JSON config sidecar per run. Done: `config.json` carries dataset,
+      network, loss, datasize, batch size, seed, lr, resolved epochs, split props,
+      `validate_every`, latent dim, param count, `probe_version`, `beta`, train-set size, plus
+      git sha / torch / python for provenance. `batch_size` is now actually forwarded to
+      `get_all_loaders`. **Partial**: split proportions are still *selected* by `validate_every`
+      and are still not part of the run path, so two runs with different splits share a
+      directory — `write_config` prints a warning when it sees that rather than preventing it.
+- [x] **B10** — `previously_done` checks only that `training_results.csv` *exists*. Done
+      differently and better: `done.json` is written last and is what "done" means; a CSV with no
+      `done.json` is moved to `training_results.csv.partial-*` and the cell re-runs. Legacy
+      directories are still trusted by CSV alone, but only for `seed=42, lr=1e-3`.
 - [ ] **B11** — fix or delete `training/benchmark.py` and `testing/baseline_performance.py`;
       both fail at import (`get_all_loaders_CIFAR`, `random_forest_test` no longer exist). The
       second is the only source of the raw-pixel baseline in `saves/readme.md`, whose 10%-data
       figure (0.0421) is *below* chance for 10 classes and so is certainly wrong.
-- [ ] **B12** — mutable default `image_dict={}` on both loader classes; rename
-      `datasets/CIFAR_10/__init__,py` (comma, not dot — `find_packages()` misses it, so a
-      non-editable `pip install .` ships a broken package); ImageNet64 `_get_labels` writes
-      `one_hot[label-1]` but returns `label` unshifted.
+- [ ] **B12** — all three re-verified as still present: mutable default `image_dict={}`
+      (`CIFAR_10/loader.py:18`, `IMAGENET/ImageNet64.py:22`); `datasets/CIFAR_10/__init__,py`
+      still has the comma (`find_packages()` misses it, so a non-editable `pip install .` ships a
+      broken package); ImageNet64 `_get_labels` still writes `one_hot[label-1]`
+      (`ImageNet64.py:94`) but returns `label` unshifted. The last one is harmless only because
+      the probe uses `data[2]`, never the one-hot.
 - [ ] LPIPS is a stateful `torchmetrics.Metric`; calling it in the training loop accumulates
       state and does roughly double the necessary work per step. Numerically harmless, but it
       is the slowest loss in the grid.
-- [ ] Best-epoch selection happens over 16 evals **on the same eval set**, inflating every
-      reported number by an unmeasured amount. Carve a separate split for epoch selection, or
-      report final-epoch only.
+- [x] Best-epoch selection happens over 16 evals **on the same eval set**, inflating every
+      reported number by an unmeasured amount. Done, both ways: the probe now cuts its encodings
+      67/16.5/16.5 into fit/select/report and writes a `{name} select` column, and
+      `summarise_runs.py` defaults to final-epoch (`--select early_stop` uses the disjoint select
+      split). Runs predating this have no `select` column and fall back to `NaN` for that mode.
 - [ ] Add assertions: split sizes match expectation, encoder output shape matches `latent_dim`,
       no `-` in any registry key, and a 2-batch overfit test per loss (loss must go to ~0).
-      **The last one alone would have caught B1, B2 and B3.**
+      **The last one alone would have caught B1, B2 and B3.** Still nothing — there is not one
+      `assert` in first-party code outside the vendored `NLPD_torch/`. Fold T1.0's
+      dataset-key assertion in here.

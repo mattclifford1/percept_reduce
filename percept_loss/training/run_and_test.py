@@ -104,7 +104,8 @@ def batch_std(outputs):
 
 
 def train(network, loss, epochs, device, saver, data_percent, pre_loaded_images=None, verbose=False,
-          async_test=True, validate_every=2, dataset='CIFAR_10', batch_size=32, lr=1e-3,
+          async_test=True, validate_every=2, n_validations=None, props=None, extra_config=None,
+          dataset='CIFAR_10', batch_size=32, lr=1e-3,
           collapse_tol=1e-4, collapse_patience=3):
     '''
     main training loop
@@ -114,10 +115,22 @@ def train(network, loss, epochs, device, saver, data_percent, pre_loaded_images=
     coincidence). lr is explicit for the same reason: T1.1 needs an LR sweep and Adam's default
     was hardcoded.
     '''
-    if validate_every == 1: # know we have a big dataset so decrease validation/test set size
-        props = [0.89, 0.1, 0.01]
-    else:
-        props = [0.4, 0.3, 0.3]
+    if n_validations != None:
+        # a fixed number of evaluations per run, whatever the epoch count. without this,
+        # epoch_scaling='equal_steps' at 1% data means 3000 epochs, and at validate_every=2 that
+        # is 1500 probes -- about six hours of sklearn for a single cell, against ~4 minutes of
+        # training. the probe is 95% of wall time on this grid, so the cadence is the cost.
+        validate_every = max(1, int(round(epochs/n_validations)))
+
+    if props == None:
+        # legacy derivation, kept so existing callers are unchanged. it couples the data split
+        # to the eval cadence (FINDINGS B7), which is actively dangerous once the cadence is
+        # computed: a scaled validate_every can land on 1 by arithmetic and silently move the
+        # split from [0.4, 0.3, 0.3] to [0.89, 0.1, 0.01]. pass props explicitly to break that.
+        if validate_every == 1: # know we have a big dataset so decrease validation/test set size
+            props = [0.89, 0.1, 0.01]
+        else:
+            props = [0.4, 0.3, 0.3]
     train_dataloader, val_dataloader, test_dataloader, _ = get_all_loaders(train_percept_reduce=data_percent,
                                                                            device=device,
                                                                            batch_size=batch_size,
@@ -137,15 +150,19 @@ def train(network, loss, epochs, device, saver, data_percent, pre_loaded_images=
     optimiser = optim.Adam(net.parameters(), lr=lr)
 
     is_vae = hasattr(net, 'kl')
-    saver.write_config(extra={'data_percent': data_percent,
+    config = {'data_percent': data_percent,
                               'split_props': props,
                               'validate_every': validate_every,
+                              'n_validations': n_validations,
                               'latent_dim': getattr(net, 'latent_dim', None),
                               'n_parameters': sum(p.numel() for p in net.parameters()),
                               'optimiser': 'Adam',
                               'probe_version': PROBE_VERSION,
                               'beta': getattr(net, 'beta', None) if is_vae else None,
-                              'train_images': len(train_dataloader.dataset)})
+                              'train_images': len(train_dataloader.dataset)}
+    if extra_config != None:
+        config.update(extra_config)
+    saver.write_config(extra=config)
 
     # get initial network stats on eval/test
     tester = test_and_saver(val_dataloader, test_dataloader, saver, device, verbose=verbose)
