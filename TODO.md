@@ -355,8 +355,9 @@ Only val MSE is logged, so a run trained with SSIM is never evaluated by SSIM.
       figure (0.0421) is *below* chance for 10 classes and so is certainly wrong.
 - [ ] **B12** — all three re-verified as still present: mutable default `image_dict={}`
       (`CIFAR_10/loader.py:18`, `IMAGENET/ImageNet64.py:22`); `datasets/CIFAR_10/__init__,py`
-      still has the comma (`find_packages()` misses it, so a non-editable `pip install .` ships a
-      broken package); ImageNet64 `_get_labels` still writes `one_hot[label-1]`
+      still has the comma (no longer a packaging bug — the hatchling build in `pyproject.toml`
+      takes the whole tree where `find_packages()` skipped the directory — but still misnamed);
+      ImageNet64 `_get_labels` still writes `one_hot[label-1]`
       (`ImageNet64.py:94`) but returns `label` unshifted. The last one is harmless only because
       the probe uses `data[2]`, never the one-hot.
 - [ ] LPIPS is a stateful `torchmetrics.Metric`; calling it in the training loop accumulates

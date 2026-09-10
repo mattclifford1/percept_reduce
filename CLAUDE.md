@@ -66,6 +66,8 @@ plots/summarise_runs.py      every run in one table (final-epoch headline), one 
 load_cifar.py                unrelated scratch script (plain CIFAR classifier tutorial)
 FINDINGS.md                  results analysis + confirmed bugs (the evidence lives here)
 TODO.md                      the open action list (DISTS collapse, data budget, ImageNet probe)
+pyproject.toml               deps (pinned) + hatchling build. replaced setup.py/requirements.txt
+uv.lock                      the resolved env — committed, part of the experimental record
 ```
 
 ## Current state of the experiment
@@ -155,12 +157,22 @@ TODO.md                      the open action list (DISTS collapse, data budget, 
 
 ## Environment
 
+**uv, not conda.** The env is `.venv/` at the repo root, built from `pyproject.toml` + `uv.lock`
+(python 3.10, torch 2.0.1+cu117, torchmetrics 1.0.0).
+
 ```bash
-conda activate percept          # python 3.10, torch 2.0.1, torchmetrics 1.0.0
+uv sync                         # create/repair .venv from the lock file
+uv run <script.py>              # run anything in it, no activation needed
 ```
 
-There is no `python`/`pandas` on the system PATH — the interpreter lives at
-`~/anaconda3/envs/percept/bin/python`. Use that (or activate the env) for any analysis script.
+There is no `python`/`pandas` on the system PATH — prefix every analysis script with `uv run`
+(or use `.venv/bin/python`). **Do not use `~/anaconda3/envs/percept/`**; the conda env is
+superseded and its editable install of `percept_loss` no longer works.
+
+Dependencies are pinned to the versions the committed runs in `saves/` were produced with, so
+`uv add`/`uv lock --upgrade` changes the experimental conditions — treat a lock bump like a
+config change, not housekeeping. `torch` comes from plain PyPI (2.0.1 there *is* the cu117
+build), so there is no `[tool.uv.sources]` / extra index to maintain.
 
 Data locations:
 - CIFAR-10: auto-downloaded to `percept_loss/datasets/CIFAR_10/raw_data/` (gitignored). Present.
@@ -170,13 +182,13 @@ Data locations:
 ## Running things
 
 ```bash
-python percept_loss/pipeline_CIFAR.py         # ~30 runs, the committed CIFAR grid
-python percept_loss/pipeline_CIFAR_ARCH.py    # architecture sweep + untrained controls
-python percept_loss/testing/reprobe.py saves --all   # re-run probes from checkpoints, no retrain
-python percept_loss/utils/migrate_saves.py saves     # legacy → current layout (dry run)
-python percept_loss/pipeline_IMAGENET64.py    # ImageNet64 val-split grid
-python percept_loss/training/dev_loop.py      # 2-epoch smoke test
-python plots/plot_training_runs.py            # regenerate plots/figs/ from saves/
+uv run percept_loss/pipeline_CIFAR.py         # ~30 runs, the committed CIFAR grid
+uv run percept_loss/pipeline_CIFAR_ARCH.py    # architecture sweep + untrained controls
+uv run percept_loss/testing/reprobe.py saves --all   # re-run probes from checkpoints, no retrain
+uv run percept_loss/utils/migrate_saves.py saves     # legacy → current layout (dry run)
+uv run percept_loss/pipeline_IMAGENET64.py    # ImageNet64 val-split grid
+uv run percept_loss/training/dev_loop.py      # 2-epoch smoke test
+uv run plots/plot_training_runs.py            # regenerate plots/figs/ from saves/
 ```
 
 Pipelines must be run from the repo root (`plot_training_runs.py` hardcodes `./saves`).
@@ -200,9 +212,14 @@ Pipelines must be run from the repo root (`plot_training_runs.py` hardcodes `./s
   a separate named loss the way `LPIPS1` does — it turns "we fixed it" into a measurement.
 - `saves/` and `plots/figs/` are committed to git. Regenerating them produces large diffs —
   that is normal for this repo (see commit `3f775c1 "complete redo of figs"`).
-- `percept_loss/datasets/CIFAR_10/__init__,py` has a **comma instead of a dot**. It works today
-  only because of implicit namespace packages + editable install. `find_packages()` does not
-  see that directory, so a non-editable `pip install .` would ship a broken package.
+- `percept_loss/datasets/CIFAR_10/__init__,py` has a **comma instead of a dot**. It works only
+  because of implicit namespace packages. The old `setup.py` used `find_packages()`, which did
+  not see that directory, so a non-editable install shipped a broken package; the hatchling
+  build in `pyproject.toml` takes the whole `percept_loss/` tree instead, so it is no longer
+  fatal — but the file is still misnamed.
+- `percept_loss/losses/NLPD_torch/utils/fourier.py` imports `torchinterp1d`, which is **not a
+  dependency** and never was installed. That module is dead vendored code; importing it fails.
+- `percept_loss/loss/` (singular) holds nothing but a stale `__pycache__`.
 
 ## Style
 

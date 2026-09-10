@@ -51,18 +51,17 @@ Short version of the results:
 ## Setup
 
 ```bash
-conda create -n percept python=3.10 -y
-conda activate percept
-conda install pytorch torchvision torchaudio pytorch-cuda=11.7 -c pytorch -c nvidia -y
-pip install -r requirements.txt
-pip install -e .
+uv sync
 ```
 
-Or in one line (make sure you're in the repo):
+That is the whole setup. [uv](https://docs.astral.sh/uv/) reads `pyproject.toml`, fetches
+Python 3.10 if you don't have it, and builds `.venv/` with the exact versions in `uv.lock`
+— including `percept_loss` itself, installed editable.
 
-```bash
-conda create -n percept python=3.10 -y && conda activate percept && conda install pytorch torchvision torchaudio pytorch-cuda=11.7 -c pytorch -c nvidia -y && pip install -r requirements.txt && pip install -e .
-```
+Dependencies are **pinned** (`torch==2.0.1` etc.), because the runs committed in `saves/` were
+produced with those versions. `torch` 2.0.1 from PyPI is the CUDA 11.7 build; no extra index
+is needed. `uv.lock` is committed — treat it as part of the experimental record and only move
+it deliberately (`uv lock --upgrade`).
 
 ### Data
 
@@ -76,14 +75,14 @@ conda create -n percept python=3.10 -y && conda activate percept && conda instal
 
 ## Running
 
-All commands from the repo root.
+All commands from the repo root. `uv run` uses `.venv/` without needing it activated.
 
 ```bash
-python percept_loss/pipeline_CIFAR.py            # the committed CIFAR-10 grid (30 runs)
-python percept_loss/pipeline_IMAGENET64.py       # ImageNet64 val-split grid
-python percept_loss/pipeline_IMAGENET64_TRAIN.py # full ImageNet64 train split
-python percept_loss/training/dev_loop.py         # 2-epoch smoke test
-python plots/plot_training_runs.py               # regenerate plots/figs/ from saves/
+uv run percept_loss/pipeline_CIFAR.py            # the committed CIFAR-10 grid (30 runs)
+uv run percept_loss/pipeline_IMAGENET64.py       # ImageNet64 val-split grid
+uv run percept_loss/pipeline_IMAGENET64_TRAIN.py # full ImageNet64 train split
+uv run percept_loss/training/dev_loop.py         # 2-epoch smoke test
+uv run plots/plot_training_runs.py               # regenerate plots/figs/ from saves/
 ```
 
 Edit the `runs` dict at the top of a pipeline file to change the grid.

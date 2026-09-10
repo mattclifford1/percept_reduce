@@ -2,7 +2,7 @@
 
 Analysis of the committed runs, the bugs that affect them, and what to run next.
 
-Everything below was recomputed from the CSVs (`~/anaconda3/envs/percept/bin/python`), not read
+Everything below was recomputed from the CSVs (`uv run`, i.e. `.venv/bin/python`), not read
 off the figures. Unless stated, the headline metric is **best-epoch MLP probe accuracy**.
 
 > **Where the runs live now.** §1–§3 analyse the original 90 runs, which are no longer in
@@ -340,8 +340,9 @@ All re-verified as still present except the last, which is fixed.
   `IMAGENET/ImageNet64.py:22`); masked today because all call sites pass an explicit dict, but a
   live trap.
 - `percept_loss/datasets/CIFAR_10/__init__,py` — **comma instead of a dot**. Works only via
-  implicit namespace packages plus editable install; `find_packages()` does not see the
-  directory, so a non-editable `pip install .` ships a broken package.
+  implicit namespace packages. The packaging half of this is fixed: `setup.py`/`find_packages()`
+  dropped the directory from a non-editable install, and the hatchling build in `pyproject.toml`
+  no longer does. The file is still misnamed.
 - ImageNet64 `_get_labels` writes `one_hot[label-1]` (`ImageNet64.py:94`) but returns `label`
   unshifted. Consistent today only because nothing reads `data[1]` — the probe uses `data[2]`.
 - `validate()` averages per-batch means unweighted (`sum(scores)/len(scores)`), over-weighting

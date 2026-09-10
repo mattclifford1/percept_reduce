@@ -1,0 +1,34 @@
+# Author: Matt Clifford <matt.clifford@bristol.ac.uk>
+[project]
+name = "percept_loss"
+version = "1.0"
+description = "Testing percept losses."
+readme = "README.md"
+requires-python = "==3.10.*"
+authors = [{ name = "Matt Clifford", email = "matt.clifford@bristol.ac.uk" }]
+
+# pinned to the versions the committed runs in saves/ were produced with. torch 2.0.1 from
+# PyPI is the cu117 build, which is what the conda env had.
+dependencies = [
+    "torch==2.0.1",
+    "torchvision==0.15.2",
+    "torchmetrics[image]==1.0.0",
+    "numpy==1.25.0",
+    "scipy==1.11.1",
+    "scikit-learn==1.3.0",
+    "pandas==2.0.3",
+    "matplotlib==3.7.2",
+    "pillow==9.4.0",
+    "pytorch-msssim==1.0.0",
+    "DISTS-pytorch==0.1",
+    "tqdm==4.65.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+# whole directory, not find_packages() -- datasets/CIFAR_10 has a `__init__,py` (comma) and
+# would otherwise be dropped from a non-editable install
+packages = ["percept_loss"]
