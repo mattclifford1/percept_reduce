@@ -109,6 +109,10 @@ def main():
     ap.add_argument('--select', default='final',
                     choices=['final', 'early_stop', 'val', 'best'])
     ap.add_argument('--out', default=DEFAULT_PLOT_DIR)
+    ap.add_argument('--no-in-figure-caption', action='store_true',
+                    help='omit the standalone caption block -- for figures going into a\n'
+                         'document, where the LaTeX caption already carries it and the\n'
+                         'block only forces a wide, unreadable canvas')
     args = ap.parse_args()
     plot_dir = args.out
 
@@ -202,20 +206,27 @@ def main():
         if shared and long_df['epoch_scaling'].nunique() > 1:
             note += (f' the {", ".join(shared)} points are one run shared by both budgets -- '
                      'the scaling factor there is 1, so the two grids cannot differ.')
-        text = caption(g, dataset, args.metric, extra=note)
-        if g.groupby('run_dir').apply(lambda r: probe_version(r, args.metric)).nunique() > 1:
-            text = MIXED_PROTOCOL_WARNING + '\n' + text
-        # wrap before drawing: savefig(bbox_inches='tight') grows the canvas to contain this
-        # block, so one long line silently doubles the figure width and shrinks the axes
-        text = '\n'.join(textwrap.fill(line, 118) for line in text.split('\n'))
-        fig.text(0.01, 0.01, text, fontsize=7.5, va='bottom', ha='left', color='dimgrey')
+        if args.no_in_figure_caption == False:
+            text = caption(g, dataset, args.metric, extra=note)
+            if g.groupby('run_dir').apply(lambda r: probe_version(r, args.metric)).nunique() > 1:
+                text = MIXED_PROTOCOL_WARNING + '\n' + text
+            # wrap before drawing: savefig(bbox_inches='tight') grows the canvas to contain
+            # this block, so one long line silently doubles the figure width and shrinks the axes
+            text = '\n'.join(textwrap.fill(line, 118) for line in text.split('\n'))
+            fig.text(0.01, 0.01, text, fontsize=7.5, va='bottom', ha='left', color='dimgrey')
 
         out_dir = os.path.join(plot_dir, dataset, net)
         os.makedirs(out_dir, exist_ok=True)
         out = os.path.join(out_dir,
                            f'data_efficiency-{args.metric}-{args.select}-{scaling}.png')
-        fig.set_size_inches(9, 6.6)
-        fig.tight_layout(rect=[0, 0.14, 1, 1])   # leave room for the caption block
+        if args.no_in_figure_caption:
+            # no caption block to leave room for, so a squarer canvas with larger relative
+            # text -- this is the one that stays readable at half a text width
+            fig.set_size_inches(7.0, 5.2)
+            fig.tight_layout()
+        else:
+            fig.set_size_inches(9, 6.6)
+            fig.tight_layout(rect=[0, 0.14, 1, 1])   # leave room for the caption block
         fig.savefig(out, bbox_inches='tight', dpi=120)
         plt.close(fig)
         print(f'wrote {out}')
