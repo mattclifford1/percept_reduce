@@ -23,6 +23,7 @@ epoch selection matters more than it looks (see --select):
 '''
 import argparse
 import os
+import textwrap
 
 import matplotlib
 matplotlib.use('Agg')    # these scripts only savefig -- never show(). without this matplotlib
@@ -53,6 +54,28 @@ colours = {'SSIM': 'blue', 'LPIPS': 'green', 'MSE': 'red', 'MSSIM': 'orange', 'N
 # one figure per optimisation budget -- they are different experiments. the fixed-budget grid
 # confounds data size with gradient steps (FINDINGS B4); the equal-steps grid holds steps fixed
 # and varies only the number of distinct images. the difference is the result (TODO T1.2).
+# x layout. the controls sit on the left, then real data on a log axis, so reading left to right
+# is "how much natural-image signal has the encoder had": none (untrained), training but no
+# photographs (uniform noise), then 1% -> 100% of the training split.
+UNTRAINED_X, UNIFORM_X, DATA_X0 = 0.0, 1.0, 4.2    # 1% lands at 2.2, 100% at 4.2
+TRAIN_IMAGES = {'CIFAR_10': 24000}                  # size of the 100% training split
+
+
+def xpos(size):
+    return UNIFORM_X if str(size) == 'uniform' else DATA_X0 + np.log10(float(size))
+
+
+def size_label(size, dataset):
+    if str(size) == 'uniform':
+        return 'uniform\nnoise'
+    frac = float(size)
+    n = TRAIN_IMAGES.get(dataset)
+    if n is None:
+        return f'{frac:.0%}'
+    count = frac*n
+    return f'{frac:.0%}\n{count/1000:g}k' if count >= 1000 else f'{frac:.0%}\n{count:.0f}'
+
+
 BUDGET_TEXT = {'fixed': 'fixed budget: 30 epochs over each cell\'s own training set '
                         '(data size and gradient steps are confounded)',
                'equal_steps': 'equal optimisation budget: epochs scaled by 1/data_percent '
@@ -100,8 +123,9 @@ def main():
 
     for dataset, net, scaling, g in panels:
         sizes = sorted_sizes(g['datasize'].unique())
-        x = np.arange(len(sizes))
+        fracs = [s for s in sizes if str(s) != 'uniform']
         fig, ax = plt.subplots()
+        n_losses = g['loss'].nunique()
 
         untrained = []
         n_seeds = set()
@@ -121,11 +145,28 @@ def main():
                 for _, r in cell.groupby('run_dir'):
                     untrained.append(r.sort_values('epoch').iloc[0][args.metric])
             if loss == 'RANDOM':
-                # no training data involved, so it is a level not a curve
-                ax.axhline(np.nanmean(ys), color='black', linestyle=':', label='RANDOM (untrained)')
+                # no training data involved: a point in the control column, and a level across
+                # the plot so every trained point can be read against it
+                i = next(k for k, s in enumerate(sizes) if not np.isnan(ys[k]))
+                ax.axhline(ys[i], color='black', linestyle=':', linewidth=1)
+                ax.errorbar([UNTRAINED_X], [ys[i]], yerr=[errs[i]], marker='s', capsize=3,
+                            color='black', linestyle='none', label='RANDOM (untrained)')
                 continue
-            ax.errorbar(x, ys, yerr=errs, marker='o', capsize=3, label=loss,
-                        color=colours.get(loss, 'grey'))
+            colour = colours.get(loss, 'grey')
+            by_size = dict(zip([str(s) for s in sizes], zip(ys, errs)))
+            # real data: a curve on the log axis
+            xd = [xpos(s) for s in fracs]
+            ax.errorbar(xd, [by_size[str(s)][0] for s in fracs],
+                        yerr=[by_size[str(s)][1] for s in fracs],
+                        marker='o', capsize=3, label=loss, color=colour)
+            # uniform noise: a control, so a point not joined to the curve. jittered so the
+            # losses, which all sit near the untrained level, do not hide each other
+            if 'uniform' in by_size:
+                k = sorted(g['loss'].unique()).index(loss)
+                jitter = (k - (n_losses - 1)/2)*0.05
+                ax.errorbar([UNIFORM_X + jitter], [by_size['uniform'][0]],
+                            yerr=[by_size['uniform'][1]], marker='o', capsize=3,
+                            color=colour, linestyle='none')
 
         chance = chance_level(dataset)
         ax.axhline(chance, color='grey', linestyle='--', linewidth=1)
@@ -134,19 +175,22 @@ def main():
             base = float(np.nanmean(untrained))
             spread = noise_floor(args.metric)
             ax.axhspan(base - spread, base + spread, color='grey', alpha=0.12)
-            ax.annotate(f'untrained encoder +/-{spread} (seed-to-seed spread)',
-                        (0, base + spread), fontsize=8, color='grey', va='bottom')
 
-        ax.set_xticks(x)
-        ax.set_xticklabels(sizes)
-        ax.set_xlabel('autoencoder training set size (fraction of the training split)\n'
-                      '"uniform" = trained on pure noise, never sees a photograph')
+        ticks = [UNTRAINED_X] + [xpos(s) for s in sizes]
+        labels = ['untrained\n(no training)'] + [size_label(s, dataset) for s in sizes]
+        ax.set_xticks(ticks)
+        ax.set_xticklabels(labels, fontsize=9)
+        ax.axvline((UNIFORM_X + xpos(fracs[0]))/2 if fracs else 1.8, color='lightgrey',
+                   linewidth=1)
+        ax.set_xlim(UNTRAINED_X - 0.5, DATA_X0 + 0.4)
+        ax.set_xlabel('controls  |  natural images the autoencoder is trained on '
+                      '(fraction of the training split, log scale)')
         ax.set_ylabel(f'{args.metric} probe accuracy on frozen encodings')
         ax.set_ylim(bottom=0)
         ax.set_title(f'{dataset} / {net}: does a perceptual loss buy data efficiency?\n'
                      f'{args.metric} probe, {SELECT_TEXT[args.select]}\n'
                      f'{BUDGET_TEXT.get(scaling, scaling)}', fontsize=11)
-        ax.legend(fontsize=8, loc='best')
+        ax.legend(fontsize=8, loc='lower right')
 
         # the figure has to stand on its own -- it is the one most likely to be read alone
         note = ('a line that is flat in x reached its ceiling on the smallest training set; '
@@ -161,6 +205,9 @@ def main():
         text = caption(g, dataset, args.metric, extra=note)
         if g.groupby('run_dir').apply(lambda r: probe_version(r, args.metric)).nunique() > 1:
             text = MIXED_PROTOCOL_WARNING + '\n' + text
+        # wrap before drawing: savefig(bbox_inches='tight') grows the canvas to contain this
+        # block, so one long line silently doubles the figure width and shrinks the axes
+        text = '\n'.join(textwrap.fill(line, 118) for line in text.split('\n'))
         fig.text(0.01, 0.01, text, fontsize=7.5, va='bottom', ha='left', color='dimgrey')
 
         out_dir = os.path.join(plot_dir, dataset, net)

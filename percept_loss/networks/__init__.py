@@ -3,8 +3,9 @@ from .linear_autoencoder import linear_AE
 from .cifar_autoencoder import Autoencoder_mini, Autoencoder2, Autoencoder_small, Autoencoder_big
 from .image_net_64_autoencoder import noraml_64, big_64
 from .dcgan_autoencoder import DCGAN_AE
+from .dcgan_gdn import DCGAN_GDN_AE
 from .resnet_autoencoder import resnet18_AE, resnet18_thin_AE
-from .vit_autoencoder import ViT_AE
+from .vit_autoencoder import ViT_AE, ViT_AE_warmup
 from .vae import DCGAN_VAE
 
 
@@ -18,9 +19,11 @@ CIFAR_AUTOENCODERS = {
     # literature backbones -- all share conv_big_z's 384 latent budget so that comparing them
     # is not secretly comparing probe input size. see README.md for citations and reasoning.
     'dcgan': DCGAN_AE,              # conv_big_z + BatchNorm/LeakyReLU (Radford et al. 2016)
+    'dcgan_gdn': DCGAN_GDN_AE,      # dcgan with GDN in place of BatchNorm (Balle et al. 2016)
     'resnet18': resnet18_AE,        # CIFAR ResNet-18, the frozen-probe standard (He et al. 2016)
     'resnet18_thin': resnet18_thin_AE,   # half width, ~4x cheaper
     'vit': ViT_AE,                  # ViT-Tiny AE, expected to lose on data -- see README
+    'vit_wu': ViT_AE_warmup,        # the same, with a 10% linear LR warm-up
     'vae': DCGAN_VAE,               # KL term on the dcgan backbone (Kingma & Welling 2014)
 }
 # N.B do not include '-' in names as inteferes with saving schema

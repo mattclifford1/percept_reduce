@@ -48,6 +48,8 @@ budget" below for why that is not a coincidence.
 | `resnet18_thin` | `ResNet18_AE(width=32)` | `resnet_autoencoder.py` | 4.0M | 384 | half width, ~4× cheaper |
 | `vit` | `ViT_AE` | `vit_autoencoder.py` | 4.6M | 384 | transformer comparison, expected to lose |
 | `vae` | `DCGAN_VAE` | `vae.py` | 0.60M | 384 | KL term on the `dcgan` backbone |
+| `dcgan_gdn` | `DCGAN_GDN_AE` | `dcgan_gdn.py` | 0.16M | 384 | `dcgan` with GDN in place of BatchNorm |
+| `vit_wu` | `ViT_AE_warmup` | `vit_autoencoder.py` | 4.6M | 384 | `vit` with a 10% linear LR warm-up |
 
 Each file's docstring carries the full citation and reasoning. Summary:
 
@@ -86,6 +88,21 @@ and `training/run_and_test.py` adds `beta * net.kl` — the only VAE-specific li
 **`beta = 1.0` is a starting point, not a tuned value** (T2.x in `TODO.md`): the KL is stored
 divided by the pixel count so it lands around 0.02 at init, the same scale as the reconstruction
 losses.
+
+**`dcgan_gdn`** — Ballé, Laparra & Simoncelli (2016), *Density Modeling of Images Using a
+Generalized Normalization Transformation*, ICLR, arXiv:1511.06281. `dcgan` with every
+BatchNorm + activation replaced by GDN (inverse GDN in the decoder), so `dcgan` vs `dcgan_gdn`
+isolates the normalisation. GDN is the divisive normalisation of learned image codecs and of
+NLPD, i.e. perceptually motivated rather than an optimisation device, and it is **per-sample**:
+no batch or running statistics, so train and eval mode are identical and a noise-trained net
+carries no noise statistics into the probe. `gdn.py` is adapted from CompressAI (via
+H-Test-IQM) so `compressai` is not a dependency.
+
+**`vit_wu`** — `vit` plus a linear learning-rate warm-up over the first 10% of optimiser steps,
+read by the trainer from the class attribute `warmup_frac`. Registered as its own network so
+readers never pool it with `vit`. Caveat in its docstring: pre-LN transformers usually train
+without warm-up, and DeiT's LR scaling puts batch 32 near 3e-5, so warm-up alone may not rescue
+1e-3.
 
 Two shared implementation choices:
 

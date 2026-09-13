@@ -71,6 +71,17 @@ architectures = {
 }
 
 
+# dcgan at 50% data, fixed budget -- the partner the equal-steps dcgan grid is compared
+# against (pipeline_CIFAR_BUDGET.py 'dcgan'). ARCH_SIZES skips 0.5, so only seed 42 existed and
+# SSIM not at all; finished cells skip on done.json.
+dcgan_half = {
+    'data_percent': [0.5],
+    'loss': ARCH_LOSSES,
+    'network': ['dcgan'],
+    'seed': SEEDS,
+}
+
+
 def arch(nets):
     return dict(architectures, network=nets)
 
@@ -88,8 +99,34 @@ PARTITIONS = {
     'vae': [arch(['vae'])],
     'vit': [arch(['vit'])],
     'resnet18': [arch(['resnet18'])],           # slowest -- start it first
+    'dcgan_half': [dcgan_half],
+    'dcgan_half_s42': [dict(dcgan_half, seed=[42])],
+    'dcgan_half_s1': [dict(dcgan_half, seed=[1])],
+    'dcgan_half_s2': [dict(dcgan_half, seed=[2])],
     'all': [controls, headline, architectures],
 }
+
+# normalisation by default. dcgan is conv_big_z plus BatchNorm and collapses in none of its runs,
+# so it becomes the main small backbone; these are the losses it had not been run on.
+FILL_LOSSES = ['MSSIM', 'NLPD', 'LPIPS1']
+dcgan_fill = {'data_percent': ALL_SIZES, 'loss': FILL_LOSSES, 'network': ['dcgan'], 'seed': SEEDS}
+# GDN in place of BatchNorm (Balle, Laparra & Simoncelli 2016): a per-sample divisive
+# normalisation from the image-coding literature, and the operation NLPD is built on
+gdn = [dict(controls, network=['dcgan_gdn']), arch(['dcgan_gdn'])]
+# ViT with a learning-rate warm-up; the RANDOM rows give the plots its untrained band
+vit_wu = [dict(controls, network=['vit_wu']), arch(['vit_wu'])]
+
+PARTITIONS.update({
+    'dcgan_fill': [dcgan_fill],
+    'gdn': gdn,
+    'vit_wu': vit_wu,
+    # two of the cells that collapse most on vit -- read these before running the other 46
+    'vit_wu_pilot': [dict(arch(['vit_wu']), data_percent=[1], loss=['DISTS', 'SSIM'], seed=[42])],
+})
+for _s in SEEDS:
+    PARTITIONS[f'dcgan_fill_s{_s}'] = [dict(dcgan_fill, seed=[_s])]
+    PARTITIONS[f'gdn_s{_s}'] = [dict(block, seed=[_s]) for block in gdn]
+    PARTITIONS[f'vit_wu_s{_s}'] = [dict(block, seed=[_s]) for block in vit_wu]
 
 
 def go(runs):

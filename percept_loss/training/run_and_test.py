@@ -149,6 +149,16 @@ def train(network, loss, epochs, device, saver, data_percent, pre_loaded_images=
     # optimiser = optim.SGD(net.parameters(), lr=1e-5)#, momentum=0.9)
     optimiser = optim.Adam(net.parameters(), lr=lr)
 
+    # optional linear learning-rate warm-up, declared by the network (see ViT_AE_warmup). a net
+    # that does not set warmup_frac trains exactly as before -- this and the scheduler.step()
+    # below are the only schedule-aware lines in the trainer.
+    warmup_frac = getattr(net, 'warmup_frac', 0)
+    scheduler = None
+    if warmup_frac > 0:
+        warmup_steps = max(1, int(warmup_frac*epochs*len(train_dataloader)))
+        scheduler = optim.lr_scheduler.LambdaLR(
+            optimiser, lambda step: min(1.0, (step + 1)/warmup_steps))
+
     is_vae = hasattr(net, 'kl')
     config = {'data_percent': data_percent,
                               'split_props': props,
@@ -157,6 +167,7 @@ def train(network, loss, epochs, device, saver, data_percent, pre_loaded_images=
                               'latent_dim': getattr(net, 'latent_dim', None),
                               'n_parameters': sum(p.numel() for p in net.parameters()),
                               'optimiser': 'Adam',
+                              'lr_warmup_frac': warmup_frac or None,
                               'probe_version': PROBE_VERSION,
                               'beta': getattr(net, 'beta', None) if is_vae else None,
                               'train_images': len(train_dataloader.dataset)}
@@ -196,6 +207,8 @@ def train(network, loss, epochs, device, saver, data_percent, pre_loaded_images=
 
             loss.backward()
             optimiser.step()
+            if scheduler is not None:
+                scheduler.step()
 
             epoch_loss += float(loss)
             epoch_std += batch_std(outputs)

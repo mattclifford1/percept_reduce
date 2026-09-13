@@ -94,3 +94,22 @@ class ViT_AE(nn.Module):
     def forward(self, x):
         z = self.encoder_forward(x)
         return self.decoder_forward(z)
+
+
+class ViT_AE_warmup(ViT_AE):
+    '''
+    ViT_AE trained with a linear learning-rate warm-up over the first 10% of optimiser steps,
+    then the same constant Adam 1e-3 as every other run.
+
+    why: 33 of 48 vit runs collapsed to a constant output, against 0 of 51 for dcgan on the
+    same losses and data. warm-up is the standard stabiliser for transformers (Goyal et al.
+    2017, arXiv:1706.02677). caveat worth knowing before reading the result: pre-LN is usually
+    reported to train *without* warm-up (Xiong et al. 2020, arXiv:2002.04745), and DeiT's
+    scaling rule (lr = 5e-4 * batch/512, arXiv:2012.12877) puts batch 32 at ~3e-5, so 1e-3 may
+    simply be too high for warm-up alone to rescue.
+
+    registered as its own network ('vit_wu') rather than a run flag so that every reader,
+    which groups by network, keeps it apart from the original vit grid. the trainer reads
+    warmup_frac; nothing else changes.
+    '''
+    warmup_frac = 0.1

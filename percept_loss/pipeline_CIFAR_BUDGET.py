@@ -43,7 +43,29 @@ budget = {
     'seed': SEEDS,
 }
 
+# the same comparison on dcgan. on conv_big_z every DISTS run and most NLPD runs collapse
+# (FINDINGS B3), so their budget curves cannot be read there; dcgan is conv_big_z plus
+# BatchNorm and collapses in none of its runs. 1 and uniform are left out: the scaling factor
+# there is 1, so those cells *are* the fixed-budget runs and already exist.
+dcgan_budget = {
+    'data_percent': [0.5, 0.1, 0.01],
+    'loss': ['SSIM', 'MSE', 'LPIPS', 'DISTS'],
+    'network': ['dcgan'],
+    'seed': SEEDS,
+}
+
+# the losses dcgan had not been run on (pipeline_CIFAR_BIG.py 'dcgan_fill'), under equal steps
+dcgan_fill_budget = dict(dcgan_budget, loss=['MSSIM', 'NLPD', 'LPIPS1'])
+
 PARTITIONS = {
+    'dcgan_fill': dcgan_fill_budget,
+    'dcgan_fill_s42': dict(dcgan_fill_budget, seed=[42]),
+    'dcgan_fill_s1': dict(dcgan_fill_budget, seed=[1]),
+    'dcgan_fill_s2': dict(dcgan_fill_budget, seed=[2]),
+    'dcgan': dcgan_budget,
+    'dcgan_s42': dict(dcgan_budget, seed=[42]),
+    'dcgan_s1': dict(dcgan_budget, seed=[1]),
+    'dcgan_s2': dict(dcgan_budget, seed=[2]),
     'all': budget,
     'budget_s42': dict(budget, seed=[42]),
     'budget_s1': dict(budget, seed=[1]),
