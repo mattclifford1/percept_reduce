@@ -1,0 +1,30 @@
+{
+  "dataset": "CIFAR_10",
+  "network": "vit_wu",
+  "loss": "DISTS",
+  "datasize": "uniform",
+  "batch_size": 32,
+  "seed": 2,
+  "lr": 0.001,
+  "epochs": 30,
+  "git_sha": "2f1fbeb-dirty",
+  "torch": "2.0.1+cu117",
+  "python": "3.10.20",
+  "started": "2026-09-11 22:42:54",
+  "data_percent": "uniform",
+  "split_props": [
+    0.4,
+    0.3,
+    0.3
+  ],
+  "validate_every": 2,
+  "n_validations": null,
+  "latent_dim": 384,
+  "n_parameters": 4640688,
+  "optimiser": "Adam",
+  "lr_warmup_frac": 0.1,
+  "probe_version": 2,
+  "beta": null,
+  "train_images": 5000,
+  "epoch_scaling": "fixed"
+}

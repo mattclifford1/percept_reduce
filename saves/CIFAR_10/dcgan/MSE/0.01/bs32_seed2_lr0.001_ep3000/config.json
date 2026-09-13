@@ -1,0 +1,30 @@
+{
+  "dataset": "CIFAR_10",
+  "network": "dcgan",
+  "loss": "MSE",
+  "datasize": 0.01,
+  "batch_size": 32,
+  "seed": 2,
+  "lr": 0.001,
+  "epochs": 3000,
+  "git_sha": "2f1fbeb-dirty",
+  "torch": "2.0.1+cu117",
+  "python": "3.10.20",
+  "started": "2026-09-11 17:46:13",
+  "data_percent": 0.01,
+  "split_props": [
+    0.4,
+    0.3,
+    0.3
+  ],
+  "validate_every": 188,
+  "n_validations": 16,
+  "latent_dim": 384,
+  "n_parameters": 152703,
+  "optimiser": "Adam",
+  "lr_warmup_frac": null,
+  "probe_version": 2,
+  "beta": null,
+  "train_images": 240,
+  "epoch_scaling": "equal_steps"
+}
