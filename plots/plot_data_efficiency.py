@@ -65,10 +65,12 @@ def xpos(size):
     return UNIFORM_X if str(size) == 'uniform' else DATA_X0 + np.log10(float(size))
 
 
-def size_label(size, dataset):
+def size_label(size, dataset, panel=False):
     if str(size) == 'uniform':
-        return 'uniform\nnoise'
+        return 'noise' if panel else 'uniform\nnoise'
     frac = float(size)
+    if panel:
+        return f'{frac:.0%}'      # the image count goes in the document caption instead
     n = TRAIN_IMAGES.get(dataset)
     if n is None:
         return f'{frac:.0%}'
@@ -109,12 +111,20 @@ def main():
     ap.add_argument('--select', default='final',
                     choices=['final', 'early_stop', 'val', 'best'])
     ap.add_argument('--out', default=DEFAULT_PLOT_DIR)
+    ap.add_argument('--panel', action='store_true',
+                    help='size and label this as one panel of a multi-panel document figure:\n'
+                         'no title (the subcaption names the architecture), short rotated tick\n'
+                         'labels and a compact canvas, so the text is still legible once the\n'
+                         'panel is scaled down to half a text width')
     ap.add_argument('--no-in-figure-caption', action='store_true',
                     help='omit the standalone caption block -- for figures going into a\n'
                          'document, where the LaTeX caption already carries it and the\n'
                          'block only forces a wide, unreadable canvas')
     args = ap.parse_args()
     plot_dir = args.out
+    panel = args.panel
+    if panel:
+        args.no_in_figure_caption = True
 
     long_df = load_long(args.save_dir)
     if args.metric not in long_df.columns:
@@ -154,7 +164,8 @@ def main():
                 i = next(k for k, s in enumerate(sizes) if not np.isnan(ys[k]))
                 ax.axhline(ys[i], color='black', linestyle=':', linewidth=1)
                 ax.errorbar([UNTRAINED_X], [ys[i]], yerr=[errs[i]], marker='s', capsize=3,
-                            color='black', linestyle='none', label='RANDOM (untrained)')
+                            color='black', linestyle='none',
+                            label='RANDOM' if panel else 'RANDOM (untrained)')
                 continue
             colour = colours.get(loss, 'grey')
             by_size = dict(zip([str(s) for s in sizes], zip(ys, errs)))
@@ -174,27 +185,44 @@ def main():
 
         chance = chance_level(dataset)
         ax.axhline(chance, color='grey', linestyle='--', linewidth=1)
-        ax.annotate('chance', (0, chance), fontsize=8, color='grey', va='bottom')
+        ax.annotate('chance', (0, chance), fontsize=9 if panel else 8, color='grey',
+                    va='bottom')
         if len(untrained):
             base = float(np.nanmean(untrained))
             spread = noise_floor(args.metric)
             ax.axhspan(base - spread, base + spread, color='grey', alpha=0.12)
 
         ticks = [UNTRAINED_X] + [xpos(s) for s in sizes]
-        labels = ['untrained\n(no training)'] + [size_label(s, dataset) for s in sizes]
+        labels = ([('untrained' if panel else 'untrained\n(no training)')]
+                  + [size_label(s, dataset, panel) for s in sizes])
         ax.set_xticks(ticks)
-        ax.set_xticklabels(labels, fontsize=9)
+        if panel:
+            # rotated, so that 50% and 100% -- 0.3 of a decade apart on the log axis, and
+            # already touching at full width -- cannot collide however narrow the panel gets
+            ax.set_xticklabels(labels, fontsize=10, rotation=45, ha='right')
+        else:
+            ax.set_xticklabels(labels, fontsize=9)
         ax.axvline((UNIFORM_X + xpos(fracs[0]))/2 if fracs else 1.8, color='lightgrey',
                    linewidth=1)
         ax.set_xlim(UNTRAINED_X - 0.5, DATA_X0 + 0.4)
-        ax.set_xlabel('controls  |  natural images the autoencoder is trained on '
-                      '(fraction of the training split, log scale)')
-        ax.set_ylabel(f'{args.metric} probe accuracy on frozen encodings')
+        label_kw = {'fontsize': 11} if panel else {}
+        ax.set_xlabel('controls  |  fraction of the training split' if panel else
+                      'controls  |  natural images the autoencoder is trained on '
+                      '(fraction of the training split, log scale)', **label_kw)
+        ax.set_ylabel(f'{args.metric} probe accuracy' if panel else
+                      f'{args.metric} probe accuracy on frozen encodings', **label_kw)
         ax.set_ylim(bottom=0)
-        ax.set_title(f'{dataset} / {net}: does a perceptual loss buy data efficiency?\n'
-                     f'{args.metric} probe, {SELECT_TEXT[args.select]}\n'
-                     f'{BUDGET_TEXT.get(scaling, scaling)}', fontsize=11)
-        ax.legend(fontsize=8, loc='lower right')
+        if panel == False:
+            ax.set_title(f'{dataset} / {net}: does a perceptual loss buy data efficiency?\n'
+                         f'{args.metric} probe, {SELECT_TEXT[args.select]}\n'
+                         f'{BUDGET_TEXT.get(scaling, scaling)}', fontsize=11)
+        if panel:
+            # two columns, because at panel size a single column of eight entries is tall
+            # enough to reach up into the very curves it is there to label
+            ax.legend(fontsize=8, loc='lower right', ncol=2, framealpha=0.9,
+                      handlelength=1.2, columnspacing=1.0, labelspacing=0.3)
+        else:
+            ax.legend(fontsize=8, loc='lower right')
 
         # the figure has to stand on its own -- it is the one most likely to be read alone
         note = ('a line that is flat in x reached its ceiling on the smallest training set; '
@@ -219,7 +247,12 @@ def main():
         os.makedirs(out_dir, exist_ok=True)
         out = os.path.join(out_dir,
                            f'data_efficiency-{args.metric}-{args.select}-{scaling}.png')
-        if args.no_in_figure_caption:
+        if panel:
+            # tuned so that at ~3.4in wide -- half of a figure that spans the text block and
+            # the draft margin -- the tick labels still land near 8pt
+            fig.set_size_inches(4.4, 3.3)
+            fig.tight_layout()
+        elif args.no_in_figure_caption:
             # no caption block to leave room for, so a squarer canvas with larger relative
             # text -- this is the one that stays readable at half a text width
             fig.set_size_inches(7.0, 5.2)
