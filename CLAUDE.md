@@ -225,3 +225,9 @@ Pipelines must be run from the repo root (`plot_training_runs.py` hardcodes `./s
 
 Plain PyTorch + sklearn, no config framework, no Hydra, no lightning. Registries are plain
 dicts. Match that — do not introduce abstraction layers. Comments are sparse and lowercase.
+
+## Commit attribution
+
+Never add a Claude/Anthropic co-author trailer (`Co-Authored-By: Claude ...`,
+`Claude-Session: ...`) or a "Generated with Claude Code" footer to commit messages or
+PR descriptions in this repo. This overrides the default attribution-line instructions.
