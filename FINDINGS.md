@@ -28,6 +28,14 @@ off the figures. Unless stated, the headline metric is **best-epoch MLP probe ac
 > figures appear below; the ±0.032 ones are left in place as the record of what was believed at
 > the time, not as current numbers.
 
+> **If you want the current numbers, go straight to [§5](#5-the-complete-gen3-set--599-runs).**
+> The gen3 sweep finished in September 2026: **599 runs, 7 architectures, 3 seeds per trained
+> cell, both optimisation budgets**. §5 is recomputed from `saves/` over that whole set and is
+> the only section any claim should be quoted from. §1 is probe-v1 history, §3 covers the
+> loss-fix measurements on the old probe, and **§4 is a partial n=1 snapshot taken mid-sweep**
+> whose `vit` conclusion §5 overturns. §5 is also the section the Overleaf write-up
+> (`percept-reduce-encoders`) is built from; the two carry the same numbers.
+
 ---
 
 ## 1. Results
@@ -119,10 +127,13 @@ untouched: nothing in these runs is interpretable as it stands. (Run counts have
 Ordered by how much they distort the committed results. Each was verified by running the code,
 not by inspection alone.
 
-> **Status.** Fixed: **B1, B2, B8, B9, B10, B13**, and the best-epoch item under B12. **B3 is
-> settled** (see its entry — normalisation, not the loss). Partially addressed: **B7** (recorded
-> and warned about, not prevented). Still open and re-verified as present: **B2's secondary**
-> (stateful LPIPS), **B4, B5, B6, B11, B12**. `saves_legacy/gen1_original/` holds the runs B1/B2
+> **Status (September 2026).** Fixed: **B1, B2, B8, B9, B10, B13, B14, B15, B16**, and the
+> best-epoch item under B12. **Settled by measurement: B3** (normalisation, not the loss — and
+> §5.7 now has the GDN and warm-up evidence behind it) and **B4** (both budgets run at three
+> seeds; §5.4 shows the difference is ≤0.020, so the data effect is distinct images). Partially
+> addressed: **B7** (recorded and warned about, not prevented) and **B5** (seeded, and n=3 per
+> trained cell, against the ≥5 the error bars want). Still open and re-verified as present:
+> **B2's secondary** (stateful LPIPS), **B6, B11, B12**. `saves_legacy/gen1_original/` holds the runs B1/B2
 > produced. §1 above describes the *pre-fix* results; it is retained as the record that motivated
 > the fixes, and is superseded for `MSSIM`/`LPIPS` by §3 and entirely by §4.
 
@@ -234,6 +245,15 @@ The intended compensation is dead code. Every run gets 30 passes over its own tr
 the SSIM/NLPD flatness finding — if anything it strengthens it, since those losses reach their
 ceiling with 240 steps — but it fatally weakens any quantitative claim about data efficiency.
 
+**Settled — the confound is real but small.** The dead line is gone and `epoch_scaling` is a run
+argument: `'fixed'` (30 epochs regardless) or `'equal_steps'` (`int(epochs/data_percent)`, so
+3000 epochs at 1%). Both grids are now run on `conv_big_z` and `dcgan` at three seeds. Paired by
+seed, **equalising gradient steps moves every `dcgan` cell by at most 0.020**, and the largest
+single move is within its own seed spread — so the data-size effect is distinct images, not
+optimisation. Numbers in §5.4. Note `equal_steps` at 1% is 3000 epochs over 240 images and has
+its own pathology (heavy overfitting), so it is a second condition to compare against, not a
+corrected version of the first — and the two must never be pooled in one table (B16).
+
 ### B5 — no seeding, one seed per cell, no error bars
 
 Only the train/val/test split is seeded (`proportions.get_indicies`, seed 42). Network init and
@@ -253,7 +273,11 @@ after the loss is built and before the network, so cells differing only in loss 
 and `seed` is a run axis that lands in the directory name. Re-measured on the current probe from
 5 seeds of the `RANDOM` control, the floor is **±0.007 MLP** (B13) — the old figure was mostly
 probe under-fitting, not init variance. What has *not* changed: the committed grid is still
-n=1 per trained cell. The gen3 sweep is running 3 seeds, not the ≥5 the error bars want.
+n=1 per trained cell. The gen3 sweep finished at **3 seeds per trained cell**, not the ≥5 the
+error bars want — enough to see the large effects (§5.2–§5.4 all exceed 0.1) but not to rank
+losses differing by 0.02–0.04. The ±0.007 band drawn on every figure is also still a
+`conv_big_z`-only measurement applied to the other six as an approximation, and a lower bound
+even there.
 
 ### B6 — `NLPD` uses 1 of its 6 pyramid levels
 
@@ -590,10 +614,16 @@ the fixes.
 
 ## 4. Gen3 — first results on the current protocol
 
-Probe v2 (standardised, three-way split), seeded, checkpointed, `saves/CIFAR_10/`. **This section
-is the only part of the file whose numbers are comparable to each other and to the untrained
-control.** It is partial — the sweep is still running — and every trained cell below is n=1
-(seed 42). Metric is **final-epoch MLP**, `dcgan`, 30 epochs, lr 1e-3.
+> **Superseded by §5 — kept as the record of what the sweep looked like at the half-way point.**
+> Every trained cell here is n=1 (seed 42) and taken while the grid was still running. The
+> untrained controls and the direction of every claim survive; the individual trained numbers
+> do not, and the `vit` reading at the end of this section is **wrong** — see §5.7. Do not
+> quote anything below.
+
+Probe v2 (standardised, three-way split), seeded, checkpointed, `saves/CIFAR_10/`. At the time of
+writing this was the only part of the file whose numbers were comparable to each other and to the
+untrained control. It is partial — the sweep was still running — and every trained cell below is
+n=1 (seed 42). Metric is **final-epoch MLP**, `dcgan`, 30 epochs, lr 1e-3.
 
 ### Untrained baselines, per architecture
 
@@ -683,14 +713,288 @@ Two more `vit`-specific facts:
 not the expected one, and the decoupling of reconstruction from probe accuracy is worth more
 than the ranking.
 
-## 5. What to run next
+> **Correction (September 2026).** The two claims above in bold — that `vit`'s 69% collapse rate
+> "is not the loss's fault … it is architectural", and that its low numbers "are not an
+> optimisation failure that a better LR would fix" — are **wrong**, and they were wrong for a
+> reason worth keeping. Collapse at pre-LayerNorm with lr 1e-3 and no warm-up is a documented
+> transformer failure. Adding a 10% linear LR warm-up (`vit_wu`, same architecture, same seed,
+> same LR) halves the collapses to 16/48 and lifts LPIPS from 0.428 to **0.592**, level with
+> `dcgan`'s best. A transformer is not a poor backbone for perceptual losses; this one was
+> badly optimised. The `corr(val MSE, MLP)` column is also superseded — it was computed on a
+> smaller run set, and §5.6 recomputes it over all 599. What survives is the finding that the
+> correlation is an artefact of data size, which §5.6 states properly.
+
+## 5. The complete gen3 set — 599 runs
+
+**This is the current record. Quote from here.** 599 completed CIFAR-10 runs on the current
+protocol, 7 architectures, 3 seeds per trained cell, both optimisation budgets, recomputed from
+`saves/` — nothing below is read off a figure. Unless stated: MLP probe, **early-stop** accuracy
+(epoch chosen on the disjoint select split, reported on the report split), fixed 30-epoch budget,
+mean ± sd over seeds. Chance is 0.100. The seed band is ±0.007, measured on the untrained
+`conv_big_z` control alone and applied to the rest as an approximation — it is init variance
+only, so it is a lower bound. Differences under ~0.015 should not be read.
+
+The Overleaf write-up `percept-reduce-encoders` presents this same set; the names below
+(**Random-encoder baseline**, **Feature-loss advantage**, …) are the names it uses, so a claim
+can be traced between the two.
+
+### 5.1 Random-encoder baseline — an untrained encoder is most of the score
+
+| network | MLP | Linear | early stop picks epoch 0 |
+|---|---|---|---|
+| `conv_big_z` | 0.411 ± 0.007 | 0.385 ± 0.010 | 82/168 (49%) |
+| `dcgan` | 0.423 ± 0.010 | 0.396 ± 0.002 | 35/168 (21%) |
+| `dcgan_gdn` | 0.438 ± 0.003 | 0.352 ± 0.004 | 20/48 (42%) |
+| `resnet18` | **0.443 ± 0.008** | 0.407 ± 0.005 | 23/48 (48%) |
+| `vae` | 0.406 ± 0.012 | 0.389 ± 0.006 | 9/48 (19%) |
+| `vit` | 0.344 ± 0.006 | **0.407 ± 0.011** | 8/48 (17%) |
+| `vit_wu` | 0.344 ± 0.006 | **0.407 ± 0.011** | 9/48 (19%) |
+
+A random conv encoder scores about four times chance. On `conv_big_z`, `dcgan_gdn` and
+`resnet18`, roughly **half of all training runs never beat their own initialisation** on a
+held-out selection split. The untrained level alone differs by 0.10 between `vit` and
+`resnet18`, so every comparison must be against its own architecture's `RANDOM` control — never
+against chance or a single global baseline. `vit` and `vit_wu` share an init, so their untrained
+columns are identical by construction. `vit` is the one architecture whose untrained latent is
+better read linearly (0.407) than by the MLP (0.344).
+
+### 5.2 Feature-loss advantage — only the VGG-feature losses clearly beat a pixel loss
+
+At 100% data, three seeds:
+
+| network | untrained | MSE | SSIM | DISTS | LPIPS |
+|---|---|---|---|---|---|
+| `conv_big_z` | 0.411 | 0.479 ± 0.006 | 0.421 ± 0.012 | 0.409 † | 0.534 ± 0.105 ‡ |
+| `dcgan` | 0.423 | 0.475 ± 0.001 | 0.420 ± 0.009 | 0.548 ± 0.005 | 0.586 ± 0.013 |
+| `dcgan_gdn` | 0.438 | 0.469 ± 0.004 | 0.438 ± 0.003 | 0.481 ± 0.041 | 0.491 ± 0.010 |
+| `resnet18` | 0.443 | 0.490 ± 0.011 | 0.484 ± 0.002 | 0.469 ± 0.013 | **0.683 ± 0.005** |
+| `vae` | 0.406 | 0.446 ± 0.010 | 0.408 ± 0.013 | 0.524 ± 0.006 | 0.586 ± 0.010 |
+| `vit` | 0.344 | 0.427 ± 0.072 | 0.347 ± 0.009 | 0.391 ± 0.007 | 0.428 ± 0.030 § |
+| `vit_wu` | 0.344 | 0.470 ± 0.006 | 0.383 ± 0.039 | 0.344 ± 0.006 | 0.592 ± 0.011 |
+
+† every `conv_big_z` DISTS run collapsed (§5.7), so early stopping returns the untrained score.
+‡ one of three seeds collapsed; `LPIPS1` reaches 0.590 ± 0.023 there. On `conv_big_z`, `MSSIM`
+reaches 0.432 ± 0.007 and `NLPD` never beats its initialisation. § two thirds of `vit` runs
+collapse.
+
+The losses split in two. **LPIPS and DISTS**, both computed on ImageNet-trained VGG features,
+add 0.16–0.24 and 0.12–0.13 over untrained on the three BatchNorm backbones. **SSIM, MSSIM and
+NLPD**, hand-designed with no learned features, sit within ~0.02 of untrained everywhere except
+`resnet18` and `vit_wu`. MSE lies between, gaining 0.03–0.08.
+
+Three more losses run on `conv_big_z` and `dcgan` only, and one of them wins on both:
+
+| network | untrained | MSSIM | NLPD | LPIPS | LPIPS1 |
+|---|---|---|---|---|---|
+| `conv_big_z` | 0.411 | 0.432 ± 0.007 | 0.409 ± 0.009 | 0.534 ± 0.105 | **0.590 ± 0.023** |
+| `dcgan` | 0.423 | 0.438 ± 0.009 | 0.423 ± 0.010 | 0.586 ± 0.013 | **0.595 ± 0.010** |
+
+**The deliberately unfixed `LPIPS1` is the best loss on both backbones that run it.** On
+`conv_big_z` that gap is partly a collapsed LPIPS seed, but on `dcgan` nothing collapses and
+`LPIPS1` is still ahead — inside the seed spread, but consistently. B2 scaled LPIPS's inputs
+correctly and made it slightly *worse*; the likely mechanism is that halving the input contrast
+shrinks the gradient and acts as an implicit LR reduction. **This is the one place in the study
+where a bug fix cost accuracy**, and it is exactly why `LPIPS1` was kept as a named loss rather
+than deleted — it turned "we fixed it" into a measurement. `NLPD` does not beat its own
+initialisation on either backbone; on `dcgan` it reproduces the untrained score to three
+decimals.
+
+So the useful distinction is **not perceptual versus pixel** — it is *contains features learned
+from labelled ImageNet versus does not*. Whether that is a perceptual effect or supervision
+leaking in through the loss is the open question; see §6.
+
+### 5.3 Data efficiency — learned losses make better use of data
+
+| network | loss | 1% | 10% | 100% | gain 1%→100% |
+|---|---|---|---|---|---|
+| `dcgan` | MSE | 0.459 | 0.483 | 0.475 | +0.016 |
+| | LPIPS | 0.462 | 0.523 | 0.586 | **+0.124** |
+| `resnet18` | MSE | 0.447 | 0.463 | 0.490 | +0.043 |
+| | LPIPS | 0.442 | 0.506 | 0.683 | **+0.241** |
+| `vae` | MSE | 0.410 | 0.424 | 0.446 | +0.036 |
+| | LPIPS | 0.448 | 0.508 | 0.586 | **+0.138** |
+
+**LPIPS at 10% of the data beats MSE at 100%, on all three normalised conv backbones.** In the
+iso-accuracy sense the project's hypothesis holds — but for the learned losses only. There is a
+floor: at 1% (240 images) no loss beats untrained by more than ~0.04 on any conv architecture.
+
+This is where §1's headline finally dies. The hand-designed losses are flat, but **a flat curve
+is not data efficiency — it means the loss is barely moving the representation**. §1 read that
+flatness as hand-designed priors substituting for data; it does not survive the corrected probe
+(B13).
+
+### 5.4 Budget control — the data dependence is not an optimisation artefact
+
+`dcgan`, early-stop MLP, three seeds. Equal-steps minus fixed, paired by seed (this closes B4
+and T1.2):
+
+| loss | 1% | 10% | 50% | fixed, 100% (anchor) |
+|---|---|---|---|---|
+| DISTS | +0.010 | +0.006 | +0.012 | 0.548 |
+| LPIPS | −0.016 | +0.004 | +0.014 | 0.586 |
+| LPIPS1 | +0.006 | +0.009 | −0.004 | 0.595 |
+| MSE | −0.005 | −0.001 | +0.002 | 0.475 |
+| MSSIM | −0.007 | +0.020 | −0.005 | 0.438 |
+| NLPD | +0.001 | +0.002 | 0.000 | 0.423 |
+| SSIM | −0.010 | +0.000 | +0.003 | 0.420 |
+
+Giving a small-data cell as many gradient steps as the full-data cell **moves it by at most
+0.020**, and the largest single move (MSSIM at 10%) has a seed spread of 0.019 — it is noise.
+LPIPS given 10× the epochs on 10% of the data reaches 0.527, still 0.059 short of the 0.586 it
+gets from all of it. **The gap between data sizes is a distinct-images effect.**
+
+`conv_big_z` runs the same two grids (63 equal-steps runs) and is the partial exception. There
+the comparison is only readable for some losses — every DISTS run and most NLPD runs collapse
+under *both* budgets, so early stopping returns epoch 0 in both and the difference is exactly
+0.000, which is an absence of measurement rather than an absence of effect:
+
+| loss | 1% | 10% | 50% | fixed, 100% (anchor) |
+|---|---|---|---|---|
+| DISTS | −0.004 | *n/a* | *n/a* | 0.409 |
+| LPIPS | +0.000 | +0.005 | −0.038 † | 0.534 |
+| LPIPS1 | +0.002 | −0.000 | +0.023 | 0.590 |
+| MSE | **+0.031** | −0.003 | +0.000 | 0.479 |
+| MSSIM | −0.000 | +0.025 | +0.013 | 0.432 |
+| NLPD | +0.004 | *n/a* | *n/a* | 0.409 |
+| SSIM | −0.002 | +0.015 | +0.004 | 0.421 |
+
+† driven entirely by one collapsed equal-steps seed; the other two move +0.014 and +0.011.
+
+Two cells exceed `dcgan`'s 0.020 ceiling, and both do it consistently across seeds rather than
+through one outlier: **MSE at 1% gains +0.031** (per-seed +0.038, +0.022, +0.032) and MSSIM at
+10% gains +0.025 (per-seed +0.028, +0.032, +0.015). So on a backbone with no normalisation, at
+the smallest data size, the budget confound is real but small — which is what §5.7 predicts:
+without BatchNorm, 240 gradient steps genuinely under-trains and more steps recover part of the
+gap. It does not touch the learned losses, whose data-size effect is an order of magnitude
+larger. `dcgan` carries the headline because every loss trains there; `conv_big_z` adds this
+qualification.
+
+### 5.5 Noise control — training on noise is close to not training at all
+
+| network | untrained | best `uniform` cell (loss) | LPIPS, 100% |
+|---|---|---|---|
+| `conv_big_z` | 0.411 | 0.418 (MSE) | 0.534 |
+| `dcgan` | 0.423 | 0.459 (LPIPS) | 0.586 |
+| `dcgan_gdn` | 0.438 | 0.469 (MSE) | 0.491 |
+| `resnet18` | 0.443 | 0.443 (all) | 0.683 |
+| `vae` | 0.406 | 0.413 (LPIPS) | 0.586 |
+| `vit` | 0.344 | 0.395 (SSIM) | 0.428 |
+| `vit_wu` | 0.344 | 0.386 (SSIM) | 0.592 |
+
+On three of seven, noise training is indistinguishable from no training (≤ 0.007). On the other
+four it gains a real but small amount (+0.031 to +0.051) — an order of magnitude less than
+natural images buy (+0.05 to +0.25). §1's "noise recovers 91% of MSE" is correct arithmetic and
+misleading interpretation: the right reading is **MSE training barely changes the
+representation**, so it is little better than noise. The control is still unmatched (T2.2).
+
+### 5.6 Reconstruction mismatch — val MSE tracks the representation only through data size
+
+| network | runs | pooled ρ | data size fixed | lowest error | best probe |
+|---|---|---|---|---|---|
+| `conv_big_z` | 77 | −0.40 | −0.02 | MSE | LPIPS1 |
+| `dcgan` | 105 | −0.25 | +0.09 | MSE | LPIPS1 |
+| `dcgan_gdn` | 44 | −0.24 | −0.30 | MSE | DISTS |
+| `resnet18` | 45 | −0.67 | +0.03 | MSE | LPIPS |
+| `vae` | 48 | −0.30 | **+0.47** | SSIM | LPIPS |
+| `vit` | 15 | −0.32 | −0.00 | MSE | *MSE* |
+| `vit_wu` | 32 | −0.43 | −0.01 | MSE | LPIPS |
+
+Spearman ρ between val reconstruction MSE and final-epoch MLP accuracy, fixed budget, collapsed
+runs excluded. "Data size fixed" subtracts each data size's mean from both variables first.
+
+Pooled, lower reconstruction error does go with a better probe everywhere. But that pools two
+things — more data improves both. **With data size held fixed the relationship disappears**:
+five of seven fall within ±0.10 of zero, and the two that do not disagree in sign. At full data
+the lowest reconstruction error comes from MSE on six of seven while the best probe comes from a
+VGG-feature loss on six of seven, at two to seven times the reconstruction error. **Selecting a
+loss by reconstruction quality picks the wrong one on six of the seven.** Expected in hindsight:
+val error *is* pixel MSE, which the MSE model optimises directly, while LPIPS is rewarded for
+ignoring exactly that detail.
+
+### 5.7 Normalisation gate — normalisation decides whether training helps at all
+
+| network | normalisation | collapsed | epoch-0 wins | untrained | LPIPS, 100% |
+|---|---|---|---|---|---|
+| `conv_big_z` | none | 43/168 | 49% | 0.411 | 0.534 ‡ |
+| `dcgan` | BatchNorm | **0/168** | 21% | 0.423 | 0.586 |
+| `dcgan_gdn` | GDN | 4/48 | 42% | 0.438 | 0.491 |
+| `resnet18` | BatchNorm | 3/48 | 48% | 0.443 | **0.683** |
+| `vae` | BatchNorm | 0/48 | 19% | 0.406 | 0.586 |
+| `vit` | LayerNorm (pre) | 33/48 | 17% | 0.344 | 0.428 |
+| `vit_wu` | LayerNorm + warm-up | 16/48 | 19% | 0.344 | 0.592 |
+
+**BatchNorm does the work, and nothing tried substitutes.** `conv_big_z` and `dcgan` differ only
+in normalisation and activation, and collapse goes from 26% to zero — that is what settled B3.
+Replacing BatchNorm with GDN (the operation NLPD is built on) does not reproduce it: `dcgan_gdn`
+still collapses, its LPIPS ceiling is 0.491 against `dcgan`'s 0.586, and it does not rise with
+data, peaking at 10%. So BatchNorm is not merely suppressing an instability — **it raises what
+the encoder can reach**. A plausible reading is that the batch statistics, which GDN by
+construction does not use, are what let the encoder exploit the loss; untested.
+
+**ViT collapse is an optimisation failure, and fixing it overturns §4.** The 33/48 `vit`
+collapses are the known pre-LayerNorm failure at 1e-3 with no warm-up. A 10% linear warm-up
+halves them to 16/48 and lifts LPIPS from 0.428 to **0.592** — level with `dcgan`'s best — while
+MSE goes 0.427 → 0.470. SSIM barely moves (0.346 → 0.383) and DISTS is *unimproved*, landing on
+0.344, its untrained level exactly, still collapsing in 10 of 12 cells. **Warm-up removes an
+optimisation failure; it does not make every loss work.**
+
+Practical consequence: read `conv_big_z` DISTS/NLPD/LPIPS off the normalised backbones instead,
+and treat any architecture comparison that has not first shown each backbone trains stably as a
+measurement of optimisation rather than of the loss.
+
+### 5.8 AdaBN check — the noise-training gain is not a BatchNorm artefact
+
+A BatchNorm net trained on uniform noise carries *noise* running statistics, so its probe score
+might be a normalisation mismatch rather than anything learned. AdaBN separates the two:
+re-estimate the running statistics on real images, no gradient steps, probe again.
+
+| condition | network | plain | AdaBN | Δ |
+|---|---|---|---|---|
+| trained on real data | `dcgan` LPIPS | 0.595 | 0.596 | +0.001 |
+| | `resnet18` LPIPS | 0.687 | 0.682 | −0.005 |
+| | `vae` MSE | 0.451 | 0.448 | −0.003 |
+| untrained (`RANDOM`) | `dcgan` | 0.423 | 0.395 | −0.027 |
+| | `resnet18` | 0.443 | 0.245 | **−0.198** |
+| | `vae` | 0.406 | 0.371 | −0.036 |
+| DISTS on noise | `dcgan` | 0.417 | 0.470 | +0.053 |
+| | `resnet18` | 0.248 | 0.309 | +0.061 |
+
+Three things follow. **Where the encoder trained on real images AdaBN does nothing** (±0.005) —
+the control that says the procedure is not just perturbing the network. **The untrained baseline
+depends heavily on its initial statistics**: giving `resnet18` real-data statistics costs it
+0.198, nearly half its accuracy, so part of what makes an untrained encoder such a strong
+baseline (§5.1) is *not* its random filters but the fact that it is normalising by nothing.
+**DISTS-on-noise is the one badly mismatched case**, gaining ~0.055 on both BatchNorm conv
+backbones.
+
+Most usefully it settles the one oddity in §5.5. On `dcgan`, LPIPS trained on pure noise scores
+0.043 above untrained, and the deflationary explanation was mismatched statistics. It is not:
+like for like, statistics re-estimated on real images for both, the gain is 0.448 − 0.395 =
+**+0.053** — slightly larger. Something about the LPIPS objective improves the encoder **even
+when its inputs contain no natural images at all**. Small next to what real data buys (+0.16),
+but real, and the cleanest probe of the teacher signal in the repo: there, the loss network is
+the only route natural-image information can take.
+
+### 5.9 What does not stand
+
+- **Every ImageNet64 run.** 1,000 classes on ~5 examples each; best of 60 is 0.022. They also
+  predate the corrected probe. Null — do not cite (T1.3).
+- **Everything before August 2026** — §1 and §3 here. Unstandardised probe (untrained MLP 0.128
+  against 0.411 now), best-epoch selection, two broken losses, one seed. Kept as the record of
+  what motivated the fixes.
+- **§4's `vit` reading**, corrected in place at the end of that section and by §5.7.
+
+---
+
+## 6. What to run next
 
 Moved to **[TODO.md](TODO.md)** so it can be worked through and ticked off. That list carries
 the same items, grouped by priority:
 
-- **Tier 1** (blocks any quotable result) — decoupling data size from optimisation budget (B4),
-  fixing the ImageNet64 probe, and multi-seed error bars. *(The `CIFAR`/`CIFAR_10` save-path
-  mismatch is resolved bar an assertion, and the `DISTS` collapse is settled — see B3.)*
+- **Tier 1** (blocks any quotable result) — fixing the ImageNet64 probe (T1.3) and going from
+  3 seeds to ≥5 (T1.4). *(Closed since this list was written: the `CIFAR`/`CIFAR_10` save-path
+  mismatch bar an assertion, the `DISTS` collapse — see B3 and §5.7 — and the data/budget
+  confound, B4, read off in §5.4.)*
 - **Tier 2** (one small change away) — a proper baseline panel, matching the `uniform` control,
   re-sweeping the architecture axis, longer training for the learned perceptual losses, and
   sweeping the `NLPD` pyramid depth.
@@ -699,5 +1003,16 @@ the same items, grouped by priority:
 - **Engineering** — the stale scripts (B11), the B12 list, the stateful-LPIPS inefficiency, and a
   set of assertions that would have caught B1–B3. *(`no_grad`/`eval`, saving weights, config
   sidecars and skip-if-exists completeness are all done.)*
+
+**The one experiment that decides how everything in §5 is read** is not yet on that list: the
+VGG-feature losses win (§5.2), but their features come from a network trained with ImageNet
+labels, so the advantage may be supervision leaking in through the loss rather than anything
+perceptual. Train with LPIPS computed on a **randomly initialised** VGG — same architecture, no
+ImageNet training — and the two accounts separate. It is one loss registry entry and ~24 runs on
+`dcgan`. If the advantage survives, the claim is "learned perceptual losses make better use of
+every image"; if it does not, it is "perceptual losses are a supervision channel", which is the
+more interesting result. §5.1, §5.6 and §5.7 stand either way as a methods contribution on
+auditing the frozen-probe protocol. The full fork, with what each account predicts for the
+follow-ups, is in the Overleaf write-up `percept-reduce-encoders` (Appendix B).
 
 This file stays as the evidence: what was measured, and what it implies.
