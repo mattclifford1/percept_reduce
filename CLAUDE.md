@@ -166,8 +166,7 @@ uv run <script.py>              # run anything in it, no activation needed
 ```
 
 There is no `python`/`pandas` on the system PATH — prefix every analysis script with `uv run`
-(or use `.venv/bin/python`). **Do not use `~/anaconda3/envs/percept/`**; the conda env is
-superseded and its editable install of `percept_loss` no longer works.
+(or use `.venv/bin/python`). The old `percept` conda env has been deleted.
 
 Dependencies are pinned to the versions the committed runs in `saves/` were produced with, so
 `uv add`/`uv lock --upgrade` changes the experimental conditions — treat a lock bump like a
