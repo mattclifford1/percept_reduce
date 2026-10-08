@@ -13,7 +13,7 @@ a GDN encoder behaves identically in train and eval mode, and a net trained on u
 carries no noise statistics into the probe (compare testing/adabn_reprobe.py).
 
 adapted from CompressAI (InterDigital; compressai/layers/gdn.py, compressai/ops/parametrizers.py,
-compressai/ops/bound_ops.py) by way of ~/projects/H-Test-IQM/h_test_IQM/models/utils.py, so that
+compressai/ops/bound_ops.py) by way of ~/Repos/percept-reduce/H-Test-IQM/h_test_IQM/models/utils.py, so that
 compressai is not a dependency of this pinned environment.
 '''
 import torch
